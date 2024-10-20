@@ -4,7 +4,7 @@
   import { BoxGeometry, MeshStandardMaterial } from 'three';
   import Player from './Player.svelte';
   import { dev } from '$app/environment';
-  import { isPaused } from '$lib/store/game';
+  import { isPaused } from '$lib/store/game.state';
 </script>
 
 <T.DirectionalLight castShadow position={[8, 20, -3]} />

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { isPaused, gameSettings } from '$lib/store/game';
+  import { isPaused, gameSettings } from '$lib/store/game.state';
   import { fade } from 'svelte/transition';
   import { cn } from '$lib/utils';
-  import ioClient from 'socket.io-client';
+  // import ioClient from 'socket.io-client';
   import { page } from '$app/stores';
   import { Button } from '$lib/components/ui/button';
   import { browser } from '$app/environment';
@@ -13,7 +13,7 @@
   let userId = $state('');
   let roomId = $state('');
   let rooms = $state<string[]>([]);
-  let socket = $state<ReturnType<typeof ioClient> | null>(null);
+  let socket = $state<WebSocket | null>(null);
 
   const MainMenuScreens = ['Main Menu', 'Host Game', 'Join Game', 'Settings'] as const;
   let currentMainMenuScreen = $state<(typeof MainMenuScreens)[number]>('Main Menu');
@@ -45,7 +45,7 @@
       try {
         currentMainMenuScreen = 'Host Game';
         isConnecting = true;
-        socket = ioClient(`https://${$page.url.host}/`);
+        socket = new WebSocket(`wss://${$page.url.host}/api/game`);
 
         socket.on('name', (data) => (userId = data));
 
@@ -73,7 +73,7 @@
       try {
         currentMainMenuScreen = 'Join Game';
         isConnecting = true;
-        socket = ioClient(`https://${$page.url.host}/`);
+        socket = new WebSocket(`wss://${$page.url.host}/api/game`);
 
         socket.on('name', (data) => (userId = data));
 

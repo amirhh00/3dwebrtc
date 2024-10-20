@@ -1,6 +1,4 @@
-import { Server } from 'socket.io';
-import { randomUUID } from 'node:crypto';
-import type { HttpServer } from 'vite';
+import type { RequestHandler } from '@sveltejs/kit';
 
 type User = {
   isHost: boolean;
@@ -9,6 +7,11 @@ type User = {
 };
 
 const openRooms = new Map<string, User[]>();
+
+/*
+import { Server } from 'socket.io';
+import type { HttpServer } from 'vite';
+
 
 export function initializeSocket(httpServer: HttpServer | null) {
   if (!httpServer) {
@@ -98,3 +101,44 @@ export function initializeSocket(httpServer: HttpServer | null) {
   });
   console.log('SocketIO injected');
 }
+
+*/
+
+export const fallback: RequestHandler = async ({ request }) => {
+  const upgradeHeader = request.headers.get('Upgrade');
+  if (!upgradeHeader || upgradeHeader !== 'websocket') {
+    return new Response('Expected Upgrade: websocket', { status: 426 });
+  }
+
+  const webSocketPair = new WebSocketPair();
+  const [client, server] = Object.values(webSocketPair) as [
+    CloudflareWebsocket,
+    CloudflareWebsocket
+  ];
+
+  server.accept();
+
+  server.addEventListener('message', (event: { data: any }) => {
+    console.log(event.data);
+  });
+
+  // server.addEventListener('open', () => {
+  //   const clientId = crypto.randomUUID().toString();
+  //   client.send(clientId);
+  // });
+
+  // server.addEventListener('close', (code?: number, reason?: string) => {
+  //   console.log('Server closed', code, reason);
+  // });
+
+  // server.addEventListener('createRoom', () => {
+  //   console.log('createRoom');
+  // });
+
+  // client.send('Hello from server');
+
+  return new Response(null, {
+    status: 101,
+    webSocket: client
+  });
+};

@@ -1,0 +1,4 @@
+name = "3dwebrtc-wrangler"
+compatibility_date = "2024-01-01"
+
+# tell wrangler to run npm run dev when running wrangler dev

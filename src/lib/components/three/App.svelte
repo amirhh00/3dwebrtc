@@ -3,16 +3,19 @@
   import { World } from '@threlte/rapier';
   import Scene from './Scene.svelte';
   import MainMenu from '$lib/components/layout/MainMenu.svelte';
+  import { browser } from '$app/environment';
 </script>
 
 <div class="absolute h-full w-full">
   <MainMenu />
 
-  <div class="h-full w-full">
-    <Canvas>
-      <World>
-        <Scene />
-      </World>
-    </Canvas>
-  </div>
+  {#if browser}
+    <div class="h-full w-full">
+      <Canvas>
+        <World>
+          <Scene />
+        </World>
+      </Canvas>
+    </div>
+  {/if}
 </div>
