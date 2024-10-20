@@ -4,8 +4,10 @@
   import { RigidBody, CollisionGroups, Collider } from '@threlte/rapier';
   import { createEventDispatcher } from 'svelte';
   import Controller from './ThirdPersonControls.svelte';
+  import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
   import type { Group, Object3D } from 'three';
-  export let position = [0, 3, 5] as [number, number, number];
+  // import PointerLockControls from './PointerLockControls.svelte';
+  export let position = [Math.random() * 10, 3, Math.random() * 5] as [number, number, number];
   export let radius = 0.3;
   export let height = 1.7;
   export let speed = 6;
@@ -15,12 +17,15 @@
   $: if (capsule) {
     capRef = capsule;
   }
-  let rigidBody: any;
+  let rigidBody: RapierRigidBody;
+  // let lock: () => Promise<void>;
 
   let forward = 0;
   let backward = 0;
   let left = 0;
   let right = 0;
+
+  let isfalling = false;
 
   const temp = new Vector3();
   const dispatch = createEventDispatcher();
@@ -48,18 +53,22 @@
   });
 
   function onKeyDown(e: KeyboardEvent) {
+    const isOnAir = rigidBody.linvel().y > 0.001 || rigidBody.linvel().y < -0.001;
     switch (e.key) {
       case 's':
-        backward = 1;
+        backward = isOnAir ? 0.05 : 1;
         break;
       case 'w':
-        forward = 1;
+        forward = isOnAir ? 0.05 : 1;
         break;
       case 'a':
-        left = 1;
+        left = isOnAir ? 0.05 : 1;
         break;
       case 'd':
-        right = 1;
+        right = isOnAir ? 0.05 : 1;
+        break;
+      case ' ':
+        if (!isOnAir) rigidBody.setLinvel(new Vector3(0, 7, 0), true);
         break;
       default:
         break;
@@ -90,6 +99,7 @@
 
 <T.PerspectiveCamera makeDefault fov={90}>
   <Controller bind:object={capRef} />
+  <!-- <PointerLockControls bind:lock /> -->
 </T.PerspectiveCamera>
 
 <T.Group bind:ref={capsule} {position} rotation.y={Math.PI}>

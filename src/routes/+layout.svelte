@@ -5,6 +5,7 @@
 </script>
 
 <ModeWatcher />
+
 <div
   class="grid min-h-screen grid-rows-[var(--nav-height)_1fr_40px] font-[family-name:var(--font-geist-sans)]"
 >

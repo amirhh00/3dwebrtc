@@ -2,4 +2,6 @@
   import Game from '$lib/components/three/App.svelte';
 </script>
 
-<Game />
+<div class="relative w-full h-full">
+  <Game />
+</div>
