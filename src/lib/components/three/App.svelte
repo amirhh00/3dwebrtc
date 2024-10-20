@@ -2,20 +2,14 @@
   import { Canvas } from '@threlte/core';
   import { World } from '@threlte/rapier';
   import Scene from './Scene.svelte';
+  import MainMenu from '../layout/MainMenu.svelte';
 </script>
 
-<div>
+<div class="relative h-full w-full">
+  <MainMenu />
   <Canvas>
     <World>
       <Scene />
     </World>
   </Canvas>
 </div>
-
-<style>
-  div {
-    position: relative;
-    height: 100%;
-    width: 100%;
-  }
-</style>
