@@ -1,14 +1,15 @@
 import { Server } from 'socket.io';
 import { randomUUID } from 'node:crypto';
 import type { HttpServer } from 'vite';
+import type {
+  Message,
+  RoomState,
+  RoomStateChanged,
+  SeekRoom,
+  UserDetails
+} from '$lib/@types/user.type';
 
-type User = {
-  isHost: boolean;
-  id: string;
-  name?: string;
-};
-
-const openRooms = new Map<string, User[]>();
+const openRooms = new Map<string, RoomState>();
 
 export function initializeSocket(httpServer: HttpServer | null) {
   if (!httpServer) {
@@ -20,10 +21,23 @@ export function initializeSocket(httpServer: HttpServer | null) {
     // Generate a random username and send it to the client to display it
     socket.emit('name', socket.id);
 
-    socket.on('createRoom', () => {
+    socket.on('createRoom', (userDetails?: UserDetails) => {
       if (!openRooms.has(socket.id)) {
         const roomId = randomUUID();
-        openRooms.set(roomId, [{ isHost: true, id: socket.id }]);
+        const roomState: RoomState = {
+          messages: [],
+          users: [
+            {
+              isHost: true,
+              id: socket.id,
+              color: userDetails?.color,
+              name: userDetails?.name
+            }
+          ]
+        };
+        // make a new room in socket.io
+        socket.join(roomId);
+        openRooms.set(roomId, roomState);
         socket.emit('roomCreated', { roomId });
       } else {
         socket.emit('err', {
@@ -34,25 +48,36 @@ export function initializeSocket(httpServer: HttpServer | null) {
       }
     });
 
-    socket.on('joinRoom', (room) => {
-      if (openRooms.has(room)) {
-        const users = openRooms.get(room);
-        if (users) {
-          users.push({ isHost: false, id: socket.id });
-          openRooms.set(room, users);
-          socket.emit('roomJoined', room);
-          io.to(room).emit('message', {
-            from: 'Server',
-            message: 'User joined',
-            time: new Date().getTime()
-          });
-        } else {
-          socket.emit('err', {
-            from: 'Server',
-            message: 'Room not found',
-            time: new Date().getTime()
-          });
-        }
+    socket.on('seekRooms', () => {
+      // send the list of open rooms (id, name) to the client
+      const rooms: SeekRoom[] = [];
+      openRooms.forEach((roomState, roomId) => {
+        const roomName = roomState.users.find((user) => user.isHost)?.name || roomId;
+        // return if it's the room that socket is already in
+        if (roomState.users.find((user) => user.id === socket.id)) return;
+        rooms.push({ roomId, roomName, playersCount: roomState.users.length });
+      });
+      socket.emit('rooms', rooms);
+    });
+
+    socket.on('joinRoom', (roomId: string) => {
+      if (
+        openRooms.has(roomId) &&
+        openRooms.get(roomId)?.users &&
+        openRooms.get(roomId)!.users.length > 0
+      ) {
+        const users = openRooms.get(roomId)!.users;
+        users.push({ isHost: false, id: socket.id });
+        openRooms.set(roomId, { users });
+        socket.emit('roomJoined', roomId);
+        socket.join(roomId);
+        io.to(roomId).emit('roomState', {
+          from: 'Server',
+          event: 'user_joined',
+          user: socket.id,
+          users,
+          time: new Date().getTime()
+        } as RoomStateChanged);
       } else {
         socket.emit('err', {
           from: 'Server',
@@ -62,35 +87,57 @@ export function initializeSocket(httpServer: HttpServer | null) {
       }
     });
 
-    socket.on('getRooms', () => {
-      socket.emit('rooms', Array.from(openRooms.keys()));
+    // Receive incoming messages and broadcast them to the room the user is in
+    socket.on('message', (msg: string) => {
+      openRooms.forEach((roomState, room) => {
+        const user = roomState.users.find((user) => user.id === socket.id);
+        if (user) {
+          const message: Message = {
+            from: user,
+            message: msg,
+            time: new Date().getTime()
+          };
+          roomState.messages?.push(message);
+          io.to(room).emit('message', message);
+        }
+      });
     });
 
-    // Receive incoming messages and broadcast them to the room the user is in
-    socket.on('message', (message) => {
-      openRooms.forEach((users, room) => {
-        const user = users.find((user) => user.id === socket.id);
+    socket.on('name', (name: string) => {
+      // change the name of the user in the room they are in
+      openRooms.forEach((roomState, room) => {
+        const user = roomState.users.find((user) => user.id === socket.id);
         if (user) {
-          io.to(room).emit('message', {
-            from: user.id,
-            message,
+          user.name = name;
+          io.to(room).emit('roomState', {
+            from: 'Server',
+            event: 'user_name_changed',
+            user: socket.id,
+            users: roomState.users,
             time: new Date().getTime()
-          });
+          } as RoomStateChanged);
         }
       });
     });
 
     socket.on('disconnect', () => {
-      openRooms.forEach((users, room) => {
-        const userIndex = users.findIndex((user) => user.id === socket.id);
+      openRooms.forEach((roomState, room) => {
+        const userIndex = roomState.users.findIndex((user) => user.id === socket.id);
         if (userIndex !== -1) {
-          users.splice(userIndex, 1);
-          openRooms.set(room, users);
-          io.to(room).emit('message', {
-            from: 'Server',
-            message: 'User left',
-            time: new Date().getTime()
-          });
+          // if at least one user is left in the room, broadcast the user_left event
+          roomState.users.splice(userIndex, 1);
+          if (roomState.users.length > 0) {
+            io.to(room).emit('roomState', {
+              from: 'Server',
+              event: 'user_left',
+              user: socket.id,
+              users: roomState.users,
+              time: new Date().getTime()
+            } as RoomStateChanged);
+          } else {
+            // if the room is empty, delete it
+            openRooms.delete(room);
+          }
         }
       });
     });

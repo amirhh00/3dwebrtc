@@ -6,6 +6,8 @@
   import Controller from './ThirdPersonControls.svelte';
   import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
   import type { Group, Object3D } from 'three';
+  import { gameSettings, userId } from '$lib/store/game';
+  import { HTML } from '@threlte/extras';
   // import PointerLockControls from './PointerLockControls.svelte';
   export let position = [Math.random() * 10, 3, Math.random() * 5] as [number, number, number];
   export let radius = 0.3;
@@ -103,15 +105,25 @@
 </T.PerspectiveCamera>
 
 <T.Group bind:ref={capsule} {position} rotation.y={Math.PI}>
+  {#if $gameSettings.playerName || $userId}
+    <HTML zIndexRange={[0, 1]} center pointerEvents="none" transform position.y={0.75}>
+      <p>
+        {$gameSettings.playerName || $userId}
+      </p>
+    </HTML>
+  {/if}
+
   <RigidBody bind:rigidBody enabledRotations={[false, false, false]}>
     <CollisionGroups groups={[0]}>
       <Collider shape={'capsule'} args={[height / 2 - radius, radius]} />
-      <T.Mesh geometry={new CapsuleGeometry(0.3, 1.8 - 0.3 * 2)} />
+      <T.Mesh>
+        <T.MeshBasicMaterial color={$gameSettings.playerColor} />
+        <T.CapsuleGeometry args={[0.3, 1.8 - 0.3 * 2]} />
+      </T.Mesh>
     </CollisionGroups>
 
     <CollisionGroups groups={[15]}>
       <Collider sensor shape={'ball'} args={[radius * 1.2]} />
-      <!-- position={[0, -height / 2 + radius, 0] } -->
     </CollisionGroups>
   </RigidBody>
 </T.Group>
