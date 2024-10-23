@@ -1,36 +1,28 @@
 <script lang="ts">
-  import { createEventDispatcher, onDestroy } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { Camera, Vector2, Vector3, Quaternion, type QuaternionLike } from 'three';
   import { useThrelte, useParent, useTask } from '@threlte/core';
   import type { Object3D } from 'three';
 
-  export let object: Object3D;
-  export let rotateSpeed = 1.0;
+  type TPCProps = {
+    object: Object3D;
+    rotateSpeed?: number;
+    idealOffset?: { x: number; y: number; z: number };
+    idealLookAt?: { x: number; y: number; z: number };
+  };
 
-  $: if (object) {
-    // console.log(object)
-    // object.position.y = 10
-    // // Calculate the direction vector towards (0, 0, 0)
-    // const target = new Vector3(0, 0, 0)
-    // const direction = target.clone().sub(object.position).normalize()
-    // // Extract the forward direction from the object's current rotation matrix
-    // const currentDirection = new Vector3(0, 1, 0)
-    // currentDirection.applyQuaternion(object.quaternion)
-    // // Calculate the axis and angle to rotate the object
-    // const rotationAxis = currentDirection.clone().cross(direction).normalize()
-    // const rotationAngle = Math.acos(currentDirection.dot(direction))
-    // // Rotate the object using rotateOnAxis()
-    // object.rotateOnAxis(rotationAxis, rotationAngle)
-  }
-
-  export let idealOffset = { x: -0.5, y: 2, z: -3 };
-  export let idealLookAt = { x: 0, y: 1, z: 5 };
+  const {
+    object = $bindable(),
+    rotateSpeed = 1.0,
+    idealOffset = { x: 0, y: 2, z: -3 },
+    idealLookAt = { x: 0, y: 1, z: 5 }
+  }: TPCProps = $props();
 
   const currentPosition = new Vector3();
   const currentLookAt = new Vector3();
 
-  let isOrbiting = false;
-  let pointerDown = false;
+  let isOrbiting = $state(false);
+  let pointerDown = $state(false);
 
   const rotateStart = new Vector2();
   const rotateEnd = new Vector2();
@@ -43,8 +35,6 @@
 
   const domElement = renderer.domElement;
   const camera = useParent();
-
-  const dispatch = createEventDispatcher();
 
   const isCamera = (p: any): p is Camera => {
     return p.isCamera;
@@ -70,7 +60,6 @@
   useTask((delta) => {
     // the object's position is bound to the prop
     if (!object) return;
-
     // camera is based on character so we rotation character first
     rotationQuat.setFromAxisAngle(axis, -rotateDelta.x * rotateSpeed * delta);
     object.quaternion.multiply(rotationQuat);
@@ -106,7 +95,6 @@
     rotateStart.copy(rotateEnd);
 
     invalidate();
-    dispatch('change');
   }
 
   function onPointerDown(event: PointerEvent) {
