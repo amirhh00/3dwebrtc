@@ -1,20 +1,26 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
-  import OtherPlayer from './OtherPlayer.svelte';
-  import type { PlayerModelProps } from '$lib/@types/3D.type';
-  import { gameState, userId } from '$lib/store/game';
+  import { gameState } from '$lib/store/game.svelte';
+  import PlayerModel from './PlayerModel.svelte';
 
   type OtherPlayersProps = {
-    PlayerModel: Snippet<[PlayerModelProps]>;
+    // PlayerModel: Snippet<[PlayerModelProps]>;
+    height: number;
+    radius: number;
   };
 
-  const { PlayerModel }: OtherPlayersProps = $props();
+  const { height, radius }: OtherPlayersProps = $props();
 </script>
 
-{#if $gameState?.room?.players && $gameState.room.players.length > 1}
-  {#each $gameState.room.players as player}
-    {#if player.id !== $userId}
-      <OtherPlayer {PlayerModel} playerColor={player.color} playerName={player.name || player.id} />
+{#if gameState?.room?.players && gameState.room.players.length > 1}
+  {#each gameState.room.players as player}
+    {#if player.id !== gameState.userId}
+      <PlayerModel
+        playerColor={player.color || '#000'}
+        playerName={player.name ?? player.id}
+        playerId={player.id}
+        {height}
+        {radius}
+      />
     {/if}
   {/each}
 {/if}

@@ -1,8 +1,13 @@
+export type WebRTCData = {
+  sdp: string; // SDP offer/answer for WebRTC
+};
+
 export type UserServer = {
   isHost: boolean;
   id: string;
   name?: string;
   color?: string;
+  rtcData?: WebRTCData; // Add WebRTC connection data
 };
 
 export type UserDetails = Partial<UserServer>;

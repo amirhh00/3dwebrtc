@@ -6,39 +6,63 @@ import type {
   RoomState,
   RoomStateChanged,
   SeekRoom,
-  UserDetails
+  UserDetails,
+  WebRTCData
 } from '$lib/@types/user.type';
 
 const openRooms = new Map<string, RoomState>();
 
+export interface EventsFromClients {
+  createRoom: (
+    userDetails: UserDetails,
+    rtcData: WebRTCData,
+    callBackFn: (data: { roomId: string }) => { roomId: string }
+  ) => void;
+  seekRooms: (callBackFn: (availableRooms: SeekRoom[]) => void) => void;
+  joinRoom: (roomId: string, rtcData: WebRTCData, callBackFn: (room: RoomState) => void) => void;
+  selectRoom: (roomId: string, callBackFn: (roomDetails: RoomState) => void) => void;
+  message: (msg: string) => void;
+  name: (name: string) => void;
+  disconnect: () => void;
+}
+
+export interface EventsToClients {
+  name: (name: string) => void;
+  err: (data: { from: string; message: string; time: number }) => void;
+  roomState: (data: RoomStateChanged) => void;
+  message: (data: Message) => void;
+}
+
 export function initializeSocket(httpServer: HttpServer | null) {
   if (!httpServer) {
-    console.error('No HTTP server provided');
+    throw new Error('HTTP server not found');
     return;
   }
-  const io = new Server(httpServer);
+  const io = new Server<EventsFromClients, EventsToClients>(httpServer);
   io.on('connection', (socket) => {
     // Generate a random username and send it to the client to display it
     socket.emit('name', socket.id);
 
-    socket.on('createRoom', (userDetails?: UserDetails) => {
+    socket.on('createRoom', (userDetails, rtcData, callBackFn) => {
       if (!openRooms.has(socket.id)) {
         const roomId = randomUUID();
+        const users = [
+          {
+            isHost: true,
+            id: socket.id,
+            color: userDetails?.color,
+            name: userDetails?.name,
+            rtcData
+          }
+        ];
         const roomState: RoomState = {
           messages: [],
-          users: [
-            {
-              isHost: true,
-              id: socket.id,
-              color: userDetails?.color,
-              name: userDetails?.name
-            }
-          ]
+          users
         };
         // make a new room in socket.io
         socket.join(roomId);
         openRooms.set(roomId, roomState);
-        socket.emit('roomCreated', { roomId });
+        callBackFn({ roomId });
       } else {
         socket.emit('err', {
           from: 'Server',
@@ -48,7 +72,7 @@ export function initializeSocket(httpServer: HttpServer | null) {
       }
     });
 
-    socket.on('seekRooms', () => {
+    socket.on('seekRooms', (callBackFn: (availableRooms: SeekRoom[]) => void) => {
       // send the list of open rooms (id, name) to the client
       const rooms: SeekRoom[] = [];
       openRooms.forEach((roomState, roomId) => {
@@ -57,27 +81,13 @@ export function initializeSocket(httpServer: HttpServer | null) {
         if (roomState.users.find((user) => user.id === socket.id)) return;
         rooms.push({ roomId, roomName, playersCount: roomState.users.length });
       });
-      socket.emit('rooms', rooms);
+      callBackFn(rooms);
     });
 
-    socket.on('joinRoom', (roomId: string) => {
-      if (
-        openRooms.has(roomId) &&
-        openRooms.get(roomId)?.users &&
-        openRooms.get(roomId)!.users.length > 0
-      ) {
-        const users = openRooms.get(roomId)!.users;
-        users.push({ isHost: false, id: socket.id });
-        openRooms.set(roomId, { users });
-        socket.emit('roomJoined', roomId);
-        socket.join(roomId);
-        io.to(roomId).emit('roomState', {
-          from: 'Server',
-          event: 'user_joined',
-          user: socket.id,
-          users,
-          time: new Date().getTime()
-        } as RoomStateChanged);
+    socket.on('selectRoom', (roomId: string, callBackFn: (roomDetails: RoomState) => void) => {
+      // send the room details to the client
+      if (openRooms.has(roomId)) {
+        callBackFn(openRooms.get(roomId)!);
       } else {
         socket.emit('err', {
           from: 'Server',
@@ -86,6 +96,37 @@ export function initializeSocket(httpServer: HttpServer | null) {
         });
       }
     });
+
+    socket.on(
+      'joinRoom',
+      (roomId: string, rtcData: WebRTCData, callBackFn: (roomState: RoomState) => void) => {
+        if (
+          openRooms.has(roomId) &&
+          openRooms.get(roomId)?.users &&
+          openRooms.get(roomId)!.users.length > 0
+        ) {
+          const room = openRooms.get(roomId)!;
+          const users = room.users;
+          users.push({ isHost: false, id: socket.id, rtcData });
+          openRooms.set(roomId, { users });
+          socket.broadcast.to(roomId).emit('roomState', {
+            from: 'Server',
+            event: 'user_joined',
+            user: socket.id,
+            users,
+            time: new Date().getTime()
+          } as RoomStateChanged);
+          socket.join(roomId);
+          callBackFn(room);
+        } else {
+          socket.emit('err', {
+            from: 'Server',
+            message: 'Room not found',
+            time: new Date().getTime()
+          });
+        }
+      }
+    );
 
     // Receive incoming messages and broadcast them to the room the user is in
     socket.on('message', (msg: string) => {

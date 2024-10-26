@@ -1,14 +1,16 @@
 <script lang="ts">
   import { Euler, Vector3 } from 'three';
-  import { T, useTask, useThrelte } from '@threlte/core';
+  import { T, useTask } from '@threlte/core';
   import { RigidBody, CollisionGroups, Collider } from '@threlte/rapier';
   import ThirdPersonControls from './ThirdPersonControls.svelte';
   import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
   import type { Group } from 'three';
-  import type { PlayerModelProps } from '../../@types/3D.type';
-  import { gameSettings, gameState, userId } from '$lib/store/game';
-  import { Text, Suspense, HTML } from '@threlte/extras';
+  import { gameSettings, gameState } from '$lib/store/game.svelte';
+  import { HTML } from '@threlte/extras';
   import OtherPlayers from './OtherPlayers.svelte';
+  import { socket } from '$lib/store/socket.svelte';
+  import PlayerModel from './PlayerModel.svelte';
+  import type { RTCData } from '$lib/@types/Rtc.type';
   // import PointerLockControls from './PointerLockControls.svelte';
 
   type PlayerProps = {
@@ -21,7 +23,6 @@
 
   let position = $state<[number, number, number]>([Math.random() * 10, 3, Math.random() * 5]);
   let capsule = $state<Group>();
-  let tref = $state<Group>();
 
   let rigidBody = $state<RapierRigidBody>();
 
@@ -29,7 +30,6 @@
   let backward = $state(0);
   let left = $state(0);
   let right = $state(0);
-  const { camera } = useThrelte();
 
   const temp = new Vector3();
 
@@ -49,9 +49,10 @@
     // when body position changes update camera position
     const pos = rigidBody.translation();
     position = [pos.x, pos.y, pos.z];
-    if (tref) {
-      // always face the player
-      tref.lookAt(camera.current.position.x, height, camera.current.position.z);
+    if (socket.webrtc?.dataChannel?.readyState === 'open') {
+      socket.webrtc.dataChannel.send(
+        JSON.stringify({ type: 'position', from: gameState.userId, position } as RTCData)
+      );
     }
   });
 
@@ -108,39 +109,8 @@
   </T.PerspectiveCamera>
 {/if}
 
-{#snippet PlayerModel({ playerColor = '', playerName = '', meshProps = {} }: PlayerModelProps)}
-  <T.Mesh {...meshProps}>
-    {#if playerName}
-      <T.Group bind:ref={tref}>
-        <Suspense>
-          <Text
-            position.y={height}
-            anchorX="center"
-            anchorY="center"
-            text={playerName}
-            characters="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-          />
-        </Suspense>
-      </T.Group>
-      <!-- <HTML
-        zIndexRange={[0, 1]}
-        center
-        pointerEvents="none"
-        transform
-        position.y={height}
-      >
-        <p class="text-xs">
-          {playerName}
-        </p>
-      </HTML> -->
-    {/if}
-    <T.MeshBasicMaterial color={playerColor} />
-    <T.CapsuleGeometry args={[radius, height]} />
-  </T.Mesh>
-{/snippet}
-
 <T.Group bind:ref={capsule} {position}>
-  {#if $gameSettings.playerName || $userId}
+  {#if gameSettings.value.playerName || gameState.userId}
     <HTML
       zIndexRange={[0, 1]}
       center
@@ -150,7 +120,7 @@
       rotation.y={Math.PI}
     >
       <p class="text-xs">
-        {$gameSettings.playerName || $userId}
+        {gameSettings.value.playerName || gameState.userId}
       </p>
     </HTML>
   {/if}
@@ -158,11 +128,18 @@
   <RigidBody bind:rigidBody enabledRotations={[false, false, false]}>
     <CollisionGroups groups={[0]}>
       <Collider shape={'capsule'} args={[height / 2, radius]} />
-      {@render PlayerModel({ playerColor: $gameSettings.playerColor })}
+      <PlayerModel
+        playerId={gameState.userId}
+        playerName={gameSettings.value.playerName}
+        meshProps={{ position: [0, 0, 0] }}
+        playerColor={gameSettings.value.playerColor}
+        {height}
+        {radius}
+      />
     </CollisionGroups>
   </RigidBody>
 </T.Group>
 
-{#if $gameState?.room?.players && $gameState.room.players.length > 1}
-  <OtherPlayers {PlayerModel} />
+{#if gameState?.room?.players && gameState.room.players.length > 1}
+  <OtherPlayers {height} {radius} />
 {/if}

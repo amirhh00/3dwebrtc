@@ -3,6 +3,9 @@ import type { Mesh } from 'three';
 
 export type PlayerModelProps = {
   playerColor?: string;
+  playerId: string;
   playerName?: string;
-  meshProps?: Props<typeof Mesh>;
+  meshProps?: Props<Mesh>;
+  radius: number;
+  height: number;
 };
