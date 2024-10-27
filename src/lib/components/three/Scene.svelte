@@ -4,7 +4,7 @@
   import { BoxGeometry, MeshStandardMaterial } from 'three';
   import Player from './Player.svelte';
   import { dev } from '$app/environment';
-  import { isPaused } from '$lib/store/game.state';
+  import { gameState } from '$lib/store/game.svelte';
 </script>
 
 <T.DirectionalLight castShadow position={[8, 20, -3]} />
@@ -14,17 +14,17 @@
   <Debug />
 {/if}
 
-<CollisionGroups groups={[0, 15]}>
-  <AutoColliders shape={'cuboid'}>
-    <T.Mesh
-      receiveShadow
-      geometry={new BoxGeometry(100, 1, 100)}
-      material={new MeshStandardMaterial()}
-    />
-  </AutoColliders>
-</CollisionGroups>
+{#if gameState.room.roomId}
+  <CollisionGroups groups={[0, 15]}>
+    <AutoColliders shape={'cuboid'}>
+      <T.Mesh
+        receiveShadow
+        geometry={new BoxGeometry(100, 1, 100)}
+        material={new MeshStandardMaterial()}
+      />
+    </AutoColliders>
+  </CollisionGroups>
 
-{#if !$isPaused}
   <CollisionGroups groups={[0]}>
     <Player />
     <!-- WALLS -->

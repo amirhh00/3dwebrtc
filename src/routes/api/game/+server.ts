@@ -1,12 +1,35 @@
 import type { RequestHandler } from '@sveltejs/kit';
+import type {
+  Message,
+  RoomState,
+  RoomStateChanged,
+  SeekRoom,
+  UserDetails,
+  WebRTCData
+} from '$lib/@types/user.type';
 
-type User = {
-  isHost: boolean;
-  id: string;
-  name?: string;
-};
+// const openRooms = new Map<string, RoomState>();
 
-const openRooms = new Map<string, User[]>();
+export interface EventsFromClients {
+  createRoom: (
+    userDetails: UserDetails,
+    rtcData: WebRTCData,
+    callBackFn: (data: { roomId: string }) => { roomId: string }
+  ) => void;
+  seekRooms: (callBackFn: (availableRooms: SeekRoom[]) => void) => void;
+  joinRoom: (roomId: string, rtcData: WebRTCData, callBackFn: (room: RoomState) => void) => void;
+  selectRoom: (roomId: string, callBackFn: (roomDetails: RoomState) => void) => void;
+  message: (msg: string) => void;
+  name: (name: string) => void;
+  disconnect: () => void;
+}
+
+export interface EventsToClients {
+  name: (name: string) => void;
+  err: (data: { from: string; message: string; time: number }) => void;
+  roomState: (data: RoomStateChanged) => void;
+  message: (data: Message) => void;
+}
 
 /*
 import { Server } from 'socket.io';
@@ -15,19 +38,34 @@ import type { HttpServer } from 'vite';
 
 export function initializeSocket(httpServer: HttpServer | null) {
   if (!httpServer) {
-    console.error('No HTTP server provided');
+    throw new Error('HTTP server not found');
     return;
   }
-  const io = new Server(httpServer);
+  const io = new Server<EventsFromClients, EventsToClients>(httpServer);
   io.on('connection', (socket) => {
     // Generate a random username and send it to the client to display it
     socket.emit('name', socket.id);
 
-    socket.on('createRoom', () => {
+    socket.on('createRoom', (userDetails, rtcData, callBackFn) => {
       if (!openRooms.has(socket.id)) {
         const roomId = randomUUID();
-        openRooms.set(roomId, [{ isHost: true, id: socket.id }]);
-        socket.emit('roomCreated', { roomId });
+        const users = [
+          {
+            isHost: true,
+            id: socket.id,
+            color: userDetails?.color,
+            name: userDetails?.name,
+            rtcData
+          }
+        ];
+        const roomState: RoomState = {
+          messages: [],
+          users
+        };
+        // make a new room in socket.io
+        socket.join(roomId);
+        openRooms.set(roomId, roomState);
+        callBackFn({ roomId });
       } else {
         socket.emit('err', {
           from: 'Server',
@@ -37,25 +75,22 @@ export function initializeSocket(httpServer: HttpServer | null) {
       }
     });
 
-    socket.on('joinRoom', (room) => {
-      if (openRooms.has(room)) {
-        const users = openRooms.get(room);
-        if (users) {
-          users.push({ isHost: false, id: socket.id });
-          openRooms.set(room, users);
-          socket.emit('roomJoined', room);
-          io.to(room).emit('message', {
-            from: 'Server',
-            message: 'User joined',
-            time: new Date().getTime()
-          });
-        } else {
-          socket.emit('err', {
-            from: 'Server',
-            message: 'Room not found',
-            time: new Date().getTime()
-          });
-        }
+    socket.on('seekRooms', (callBackFn: (availableRooms: SeekRoom[]) => void) => {
+      // send the list of open rooms (id, name) to the client
+      const rooms: SeekRoom[] = [];
+      openRooms.forEach((roomState, roomId) => {
+        const roomName = roomState.users.find((user) => user.isHost)?.name || roomId;
+        // return if it's the room that socket is already in
+        if (roomState.users.find((user) => user.id === socket.id)) return;
+        rooms.push({ roomId, roomName, playersCount: roomState.users.length });
+      });
+      callBackFn(rooms);
+    });
+
+    socket.on('selectRoom', (roomId: string, callBackFn: (roomDetails: RoomState) => void) => {
+      // send the room details to the client
+      if (openRooms.has(roomId)) {
+        callBackFn(openRooms.get(roomId)!);
       } else {
         socket.emit('err', {
           from: 'Server',
@@ -65,35 +100,88 @@ export function initializeSocket(httpServer: HttpServer | null) {
       }
     });
 
-    socket.on('getRooms', () => {
-      socket.emit('rooms', Array.from(openRooms.keys()));
-    });
-
-    // Receive incoming messages and broadcast them to the room the user is in
-    socket.on('message', (message) => {
-      openRooms.forEach((users, room) => {
-        const user = users.find((user) => user.id === socket.id);
-        if (user) {
-          io.to(room).emit('message', {
-            from: user.id,
-            message,
+    socket.on(
+      'joinRoom',
+      (roomId: string, rtcData: WebRTCData, callBackFn: (roomState: RoomState) => void) => {
+        if (
+          openRooms.has(roomId) &&
+          openRooms.get(roomId)?.users &&
+          openRooms.get(roomId)!.users.length > 0
+        ) {
+          const room = openRooms.get(roomId)!;
+          const users = room.users;
+          users.push({ isHost: false, id: socket.id, rtcData });
+          openRooms.set(roomId, { users });
+          socket.broadcast.to(roomId).emit('roomState', {
+            from: 'Server',
+            event: 'user_joined',
+            user: socket.id,
+            users,
+            time: new Date().getTime()
+          } as RoomStateChanged);
+          socket.join(roomId);
+          callBackFn(room);
+        } else {
+          socket.emit('err', {
+            from: 'Server',
+            message: 'Room not found',
             time: new Date().getTime()
           });
+        }
+      }
+    );
+
+    // Receive incoming messages and broadcast them to the room the user is in
+    socket.on('message', (msg: string) => {
+      openRooms.forEach((roomState, room) => {
+        const user = roomState.users.find((user) => user.id === socket.id);
+        if (user) {
+          const message: Message = {
+            from: user,
+            message: msg,
+            time: new Date().getTime()
+          };
+          roomState.messages?.push(message);
+          io.to(room).emit('message', message);
+        }
+      });
+    });
+
+    socket.on('name', (name: string) => {
+      // change the name of the user in the room they are in
+      openRooms.forEach((roomState, room) => {
+        const user = roomState.users.find((user) => user.id === socket.id);
+        if (user) {
+          user.name = name;
+          io.to(room).emit('roomState', {
+            from: 'Server',
+            event: 'user_name_changed',
+            user: socket.id,
+            users: roomState.users,
+            time: new Date().getTime()
+          } as RoomStateChanged);
         }
       });
     });
 
     socket.on('disconnect', () => {
-      openRooms.forEach((users, room) => {
-        const userIndex = users.findIndex((user) => user.id === socket.id);
+      openRooms.forEach((roomState, room) => {
+        const userIndex = roomState.users.findIndex((user) => user.id === socket.id);
         if (userIndex !== -1) {
-          users.splice(userIndex, 1);
-          openRooms.set(room, users);
-          io.to(room).emit('message', {
-            from: 'Server',
-            message: 'User left',
-            time: new Date().getTime()
-          });
+          // if at least one user is left in the room, broadcast the user_left event
+          roomState.users.splice(userIndex, 1);
+          if (roomState.users.length > 0) {
+            io.to(room).emit('roomState', {
+              from: 'Server',
+              event: 'user_left',
+              user: socket.id,
+              users: roomState.users,
+              time: new Date().getTime()
+            } as RoomStateChanged);
+          } else {
+            // if the room is empty, delete it
+            openRooms.delete(room);
+          }
         }
       });
     });
@@ -118,8 +206,9 @@ export const fallback: RequestHandler = async ({ request }) => {
 
   server.accept();
 
-  server.addEventListener('message', (event: { data: any }) => {
-    console.log(event.data);
+  server.addEventListener('message', (event: unknown) => {
+    const messageEvent = event as MessageEvent;
+    console.log(messageEvent.data);
   });
 
   // server.addEventListener('open', () => {
