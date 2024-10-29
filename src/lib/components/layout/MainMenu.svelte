@@ -24,7 +24,7 @@
 
   onMount(() => {
     (async () => {
-      await socket.connect(`https://${$page.url.host}/`);
+      await socket.connect(`${$page.url.host}/`);
       isLoadingSocketConnection = false;
     })();
   });
@@ -91,11 +91,12 @@
     <p class="text-xs opacity-50 ml-px">Lobby</p>
     <ul class="list-none pl-0">
       {#each gameState.room.players as user, i}
+        {@const uname = !!user.name ? user.name.charAt(0) : i}
         <li
+          title={uname?.toString()}
           class="text-sm uppercase w-8 h-8 bg-background rounded-full opacity-50 flex items-center justify-center p-1 mt-2"
         >
-          <!-- get first character of the name or index -->
-          {!!user.name ? user.name.charAt(0) : i}
+          {uname}
         </li>
       {/each}
     </ul>

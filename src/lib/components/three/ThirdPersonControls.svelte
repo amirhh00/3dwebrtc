@@ -124,6 +124,7 @@
   }
 
   function onKeyDown(event: KeyboardEvent) {
+    if (document.activeElement?.tagName === 'INPUT') return;
     switch (event.key) {
       case 'a':
         rotateDelta.x = -2 * rotateSpeed;
@@ -137,6 +138,7 @@
   }
 
   function onKeyUp(event: KeyboardEvent) {
+    if (document.activeElement?.tagName === 'INPUT') return;
     switch (event.key) {
       case 'a':
         rotateDelta.x = 0;

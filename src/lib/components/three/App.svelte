@@ -5,6 +5,7 @@
   import MainMenu from '$lib/components/layout/MainMenu.svelte';
   import { PerfMonitor } from '@threlte/extras';
   import { dev } from '$app/environment';
+  import ChatBox from '$lib/components/ChatBox.svelte';
 </script>
 
 <div class="absolute h-full w-full">
@@ -20,4 +21,5 @@
       </World>
     </Canvas>
   </div>
+  <ChatBox />
 </div>

@@ -6,11 +6,9 @@
   import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
   import type { Group } from 'three';
   import { gameSettings, gameState } from '$lib/store/game.svelte';
-  import { HTML } from '@threlte/extras';
   import OtherPlayers from './OtherPlayers.svelte';
   import { socket } from '$lib/store/socket.svelte';
   import PlayerModel from './PlayerModel.svelte';
-  import type { RTCData } from '$lib/@types/Rtc.type';
   // import PointerLockControls from './PointerLockControls.svelte';
 
   type PlayerProps = {
@@ -49,14 +47,13 @@
     // when body position changes update camera position
     const pos = rigidBody.translation();
     position = [pos.x, pos.y, pos.z];
-    if (socket.webrtc?.dataChannel?.readyState === 'open') {
-      socket.webrtc.dataChannel.send(
-        JSON.stringify({ type: 'position', from: gameState.userId, position } as RTCData)
-      );
+    if (socket.webrtc) {
+      socket.webrtc.sendPositionUpdate({ x: pos.x, y: pos.y, z: pos.z });
     }
   });
 
   function onKeyDown(e: KeyboardEvent) {
+    if (document.activeElement?.tagName === 'INPUT') return;
     if (!rigidBody) return;
     const isOnAir = rigidBody.linvel().y > 0.001 || rigidBody.linvel().y < -0.001;
     switch (e.key) {
@@ -100,7 +97,7 @@
   }
 </script>
 
-<svelte:window on:keydown|preventDefault={onKeyDown} on:keyup={onKeyUp} />
+<svelte:window on:keydown={onKeyDown} on:keyup={onKeyUp} />
 
 {#if capsule}
   <T.PerspectiveCamera makeDefault fov={90}>
@@ -110,21 +107,6 @@
 {/if}
 
 <T.Group bind:ref={capsule} {position}>
-  {#if gameSettings.value.playerName || gameState.userId}
-    <HTML
-      zIndexRange={[0, 1]}
-      center
-      pointerEvents="none"
-      transform
-      position.y={height}
-      rotation.y={Math.PI}
-    >
-      <p class="text-xs">
-        {gameSettings.value.playerName || gameState.userId}
-      </p>
-    </HTML>
-  {/if}
-
   <RigidBody bind:rigidBody enabledRotations={[false, false, false]}>
     <CollisionGroups groups={[0]}>
       <Collider shape={'capsule'} args={[height / 2, radius]} />

@@ -1,18 +1,14 @@
-// import type { SocketClient } from '$lib/store/socket.svelte';
-// import type { WebRTCData } from '$lib/@types/user.type';
-
-import { dev } from '$app/environment';
-import type { RTCData } from '$lib/@types/Rtc.type';
-import { gameState } from './game.svelte';
+import { dev } from "$app/environment";
+import type { RTCData } from "$lib/@types/Rtc.type";
+import type { RoomState } from "$lib/@types/user.type";
+import { gameState } from "./game.svelte";
 
 export class WebRTCConnection {
-  private peers: Map<string, RTCPeerConnection> = new Map();
-  private dataChannels: Map<string, RTCDataChannel> = new Map();
+  public dataChannels: Map<string, RTCDataChannel> = new Map();
   private localStream: MediaStream | null = null;
-  private isSendingBackSdp = false;
   private _sdp: RTCSessionDescriptionInit | null = null;
   private peerConnection: RTCPeerConnection | null = null;
-  dataChannel: RTCDataChannel | null = null;
+  private _offerDc: RTCDataChannel | null = null;
 
   constructor() {
     if (dev) {
@@ -27,74 +23,101 @@ export class WebRTCConnection {
       this.createIceCandidate().then(() => {
         resolve();
       });
-      if (!this.peerConnection) throw new Error('Peer connection not set');
-      this.dataChannel = this.peerConnection.createDataChannel('sendChannel');
-      this.addListeners();
-      this.peerConnection.createOffer().then((o) => this.peerConnection!.setLocalDescription(o));
+      if (!this.peerConnection) throw new Error("Peer connection not set");
+      // this.dataChannel = this.peerConnection.createDataChannel('sendChannel');
+      this._offerDc = this.peerConnection.createDataChannel("sendChannel");
+      this.addListeners(this._offerDc);
+      this.peerConnection.createOffer().then((o) =>
+        this.peerConnection!.setLocalDescription(o)
+      );
     });
   }
 
-  async joinRemoteConnection(offerSdp: RTCSessionDescriptionInit[]) {
+  async joinRemoteConnection(roomState: RoomState) {
     return new Promise<void>((resolve) => {
       this.createIceCandidate();
-      if (!this.peerConnection) throw new Error('Peer connection not set');
+      if (!this.peerConnection) throw new Error("Peer connection not set");
+      // FIX: this only works for 2 users
+      const user = roomState.users[0];
       this.peerConnection.ondatachannel = (event) => {
-        console.log('Data channel received');
-        this.dataChannel = event.channel;
-        this.addListeners();
+        console.log("Data channel received");
+        // userId should be the other user's id
+        this.dataChannels.set(user.id, event.channel);
+        this.addListeners(event.channel);
       };
-      this.peerConnection.setRemoteDescription(offerSdp[0]).then(() => {
-        console.log('Remote description set');
+      if (!user.rtcData?.sdp) {
+        throw new Error("No offer sdp found");
+      }
+      const offerSdp = JSON.parse(user.rtcData.sdp);
+      this.peerConnection.setRemoteDescription(offerSdp).then(() => {
+        console.log("Remote description set");
       });
       this.peerConnection
         .createAnswer()
         .then((a) => this.peerConnection!.setLocalDescription(a))
         .then(() => {
           this._sdp = this.peerConnection!.localDescription;
-          console.log(' NEW ice candidnat', this._sdp);
+          console.log(" NEW ice candidnat", this._sdp);
           resolve();
         });
     });
   }
 
-  async handleNewConnection(offerSdp: RTCSessionDescriptionInit) {
-    if (!this.peerConnection) throw new Error('Peer connection not set');
-    console.log('new connection', offerSdp);
-    this.peerConnection.setRemoteDescription(offerSdp).then(() => {
-      console.log('Remote description set');
-    });
+  async handleNewConnection(
+    offerSdp: RTCSessionDescriptionInit,
+    userId: string,
+  ) {
+    if (!this.peerConnection || !this._offerDc) {
+      throw new Error("Peer connection not set");
+    }
+    // add new remote description
+    if (this.peerConnection.signalingState !== "stable") {
+      await this.peerConnection.setRemoteDescription(offerSdp);
+      this.dataChannels.set(userId, this._offerDc);
+      console.log("Remote description set", offerSdp);
+    } else {
+      console.error(this.peerConnection);
+      throw new Error("Signaling state is stable");
+    }
   }
 
   get sdp() {
-    if (!this._sdp) throw new Error('SDP not set');
+    if (!this._sdp) throw new Error("SDP not set");
     return JSON.stringify(this._sdp);
   }
 
-  private addListeners() {
-    if (!this.dataChannel) throw new Error('Data channel not set');
-    this.dataChannel.onopen = () => console.log('Data channel open');
-    this.dataChannel.onmessage = (e) => {
-      // if data is from remote user
-      const data: RTCData = JSON.parse(e.data);
-      // console.log('messsage received!!!' + e.data);
-      if (data.type === 'position' && data.position) {
-        // console.log('position received!!!');
-        if (gameState.room?.players?.length && gameState.room.players.length > 1) {
-          for (let i = 0; i < gameState.room.players!.length; i++) {
-            const player = gameState.room.players![i];
-            if (player.id === data.from) {
-              player.position = data.position;
-              break;
+  private addListeners(dc: RTCDataChannel) {
+    if (!dc) throw new Error("Data channel not set");
+    dc.onopen = () => console.log("Data channel open");
+    dc.onclose = () => console.log("closed!!!!!!");
+    dc.onmessage = (e) => {
+      try {
+        // if data is from remote user
+        const data: RTCData = JSON.parse(e.data);
+        if (data.type === "position" && data.position) {
+          if (
+            gameState.room?.players?.length && gameState.room.players.length > 1
+          ) {
+            for (let i = 0; i < gameState.room.players!.length; i++) {
+              const player = gameState.room.players![i];
+              if (player.id === data.from) {
+                player.position = data.position;
+                break;
+              }
             }
           }
         }
+      } catch {
+        // new message received from remote user
+        console.log(e.data);
       }
     };
-    this.dataChannel.onclose = () => console.log('closed!!!!!!');
   }
 
   async setupLocalStream() {
-    this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    this.localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+    });
   }
 
   private async createIceCandidate() {
@@ -103,56 +126,67 @@ export class WebRTCConnection {
         iceServers: [
           {
             urls: [
-              'stun:stun.l.google.com:19302',
-              'stun:stun1.l.google.com:19302'
+              "stun:stun.l.google.com:19302",
+              "stun:stun1.l.google.com:19302",
               // More STUN/TURN servers here if needed
-            ]
-          }
-        ]
+            ],
+          },
+        ],
       });
       this.peerConnection.onicecandidate = (e) => {
         if (!e.candidate) return;
         this._sdp = this.peerConnection!.localDescription;
-        console.log(' NEW ice candidnat', this._sdp);
+        console.log(" NEW ice candidnat", this._sdp);
         resolve();
       };
     });
   }
 
-  async sendPositionUpdate(position: { x: number; y: number; z: number }) {
-    const data = JSON.stringify(position);
-    this.dataChannels.forEach((channel) => {
-      if (channel.readyState === 'open') {
-        channel.send(data);
+  public sendPositionUpdate(position: { x: number; y: number; z: number }) {
+    try {
+      if (
+        this.dataChannels &&
+        this.dataChannels.size > 0
+      ) {
+        // if (this._offerDc) {
+        //   debugger;
+        // }
+        for (const dc of this.dataChannels.values()) {
+          if (dc.readyState === "open") {
+            const data = {
+              type: "position",
+              position,
+              from: gameState.userId,
+            };
+            dc.send(JSON.stringify(data));
+          }
+        }
       }
-    });
-  }
-
-  handleSendMsg(msg: string) {
-    // this.dataChannels.forEach((channel) => {
-    //   if (channel.readyState === 'open') {
-    //     channel.send(msg);
-    //   }
-    // });
-    if (!this.dataChannel) throw new Error('Data channel not set');
-    this.dataChannel.send(msg);
-  }
-
-  closePeerConnection(userId: string) {
-    const peer = this.peers.get(userId);
-    if (peer) {
-      peer.close();
-      this.peers.delete(userId);
-      this.dataChannels.delete(userId);
+    } catch (error) {
+      console.error("Error sending position update", error);
     }
   }
 
-  disconnect() {
-    this.peers.forEach((peer, userId) => {
-      peer.close();
-      this.peers.delete(userId);
-    });
-    this.dataChannels.clear();
-    this.localStream = null;
+  sendMessage(msg: string, userId?: string) {
+    if (!userId) {
+      for (const dc of this.dataChannels.values()) {
+        dc.send(msg);
+      }
+    } else {
+      this.dataChannels.get(userId)?.send(msg);
+    }
+  }
+
+  closePeerConnection(userId: string) {
+    const dc = this.dataChannels.get(userId);
+    if (!dc) return;
+
+    dc.close();
+    this.dataChannels.delete(userId);
+
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = null; // Reset the peer connection
+    }
   }
 }

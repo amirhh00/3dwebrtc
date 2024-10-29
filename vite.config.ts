@@ -1,5 +1,5 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import mkcert from 'vite-plugin-mkcert';
+// import mkcert from 'vite-plugin-mkcert';
 import { defineConfig, type PluginOption, type ServerOptions } from 'vite';
 import { initializeSocket } from './vite-ws-dev.ts';
 
@@ -15,9 +15,9 @@ export default defineConfig((cfg) => {
     }
   ];
   if (cfg.mode === 'development') {
-    plugins.push(mkcert());
+    // plugins.push(mkcert());
     server = {
-      proxy: {}
+      // proxy: {}
     };
   }
   return {

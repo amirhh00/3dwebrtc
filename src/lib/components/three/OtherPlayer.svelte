@@ -1,6 +1,4 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
-  import type { PlayerModelProps } from '$lib/@types/3D.type';
   import PlayerModel from './PlayerModel.svelte';
 
   type OtherPlayersProps = {
@@ -9,6 +7,7 @@
     playerName: string;
     height: number;
     radius: number;
+    playerId: string;
   };
 
   const props: OtherPlayersProps = $props();
