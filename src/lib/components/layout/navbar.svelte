@@ -7,7 +7,7 @@
   }
 </script>
 
-<nav class="content-center">
+<nav class="content-center border-b">
   <div class="container mx-auto flex items-center justify-between">
     <div class="text-lg font-bold">
       <a href="/">Brand</a>

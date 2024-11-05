@@ -9,6 +9,7 @@ import type {
   UserDetails,
   WebRTCData,
 } from "$lib/@types/user.type";
+import type { GameSettings } from "$lib/@types/3D.type";
 
 const openRooms = new Map<string, RoomState>();
 
@@ -22,6 +23,7 @@ export interface EventsFromClients {
   joinRoom: (
     roomId: string,
     rtcData: WebRTCData,
+    gameSettings: GameSettings,
     callBackFn: (room: RoomState) => void,
   ) => void;
   selectRoom: (
@@ -117,6 +119,7 @@ export function initializeSocket(httpServer: HttpServer | null) {
       (
         roomId: string,
         rtcData: WebRTCData,
+        gameSettings: GameSettings,
         callBackFn: (roomState: RoomState) => void,
       ) => {
         if (
@@ -126,7 +129,13 @@ export function initializeSocket(httpServer: HttpServer | null) {
         ) {
           const room = openRooms.get(roomId)!;
           const users = room.users;
-          users.push({ isHost: false, id: socket.id, rtcData });
+          users.push({
+            isHost: false,
+            id: socket.id,
+            rtcData,
+            name: gameSettings.playerName,
+            color: gameSettings.playerColor,
+          });
           openRooms.set(roomId, { users });
           socket.broadcast.to(roomId).emit("roomState", {
             from: "Server",

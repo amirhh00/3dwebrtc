@@ -14,7 +14,7 @@
   <div class="h-full w-full">
     <Canvas>
       {#if dev}
-        <PerfMonitor />
+        <PerfMonitor anchorY="bottom" />
       {/if}
       <World>
         <Scene />
