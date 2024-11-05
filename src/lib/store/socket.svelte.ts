@@ -8,12 +8,9 @@ import type {
   RoomStateChanged,
   UserDetails,
 } from "$lib/@types/user.type";
-import { availableRooms, gameState } from "$lib/store/game.svelte";
-import { WebRTCConnection } from "./rtc.svelte";
-import type {
-  EventsFromClients,
-  EventsToClients,
-} from "$lib/../../vite-ws-dev";
+import { availableRooms, gameState } from "$lib/store/game.svelte.ts";
+import { WebRTCConnection } from "./rtc.svelte.ts";
+import type { EventsFromClients, EventsToClients } from "$lib/@types/socket.type.ts";
 
 export type SocketClient = Socket<EventsToClients, EventsFromClients>;
 

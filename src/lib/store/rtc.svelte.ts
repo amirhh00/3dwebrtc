@@ -1,7 +1,7 @@
 import { dev } from "$app/environment";
 import type { RTCData } from "$lib/@types/Rtc.type";
-import type { RoomState } from "$lib/@types/user.type";
-import { gameState } from "./game.svelte";
+import type { RoomState } from "$lib/@types/user.type.ts";
+import { gameState } from "./game.svelte.ts";
 
 export class WebRTCConnection {
   public dataChannels: Map<string, RTCDataChannel> = new Map();

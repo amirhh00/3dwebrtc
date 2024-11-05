@@ -6,44 +6,18 @@ import type {
   RoomState,
   RoomStateChanged,
   SeekRoom,
-  UserDetails,
   WebRTCData,
-} from "$lib/@types/user.type";
+} from "$lib/@types/user.type.ts";
+import type {
+  EventsFromClients,
+  EventsToClients,
+} from "$lib/@types/socket.type.ts";
 
 const openRooms = new Map<string, RoomState>();
-
-export interface EventsFromClients {
-  createRoom: (
-    userDetails: UserDetails,
-    rtcData: WebRTCData,
-    callBackFn: (data: { roomId: string }) => { roomId: string },
-  ) => void;
-  seekRooms: (callBackFn: (availableRooms: SeekRoom[]) => void) => void;
-  joinRoom: (
-    roomId: string,
-    rtcData: WebRTCData,
-    callBackFn: (room: RoomState) => void,
-  ) => void;
-  selectRoom: (
-    roomId: string,
-    callBackFn: (roomDetails: RoomState) => void,
-  ) => void;
-  message: (msg: string) => void;
-  name: (name: string) => void;
-  disconnect: () => void;
-}
-
-export interface EventsToClients {
-  name: (name: string) => void;
-  err: (data: { from: string; message: string; time: number }) => void;
-  roomState: (data: RoomStateChanged) => void;
-  message: (data: Message) => void;
-}
 
 export function initializeSocket(httpServer: HttpServer | null) {
   if (!httpServer) {
     throw new Error("HTTP server not found");
-    return;
   }
   const io = new Server<EventsFromClients, EventsToClients>(httpServer);
   io.on("connection", (socket) => {
