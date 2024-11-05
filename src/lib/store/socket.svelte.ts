@@ -1,23 +1,8 @@
-import ioClient, {
-  type ManagerOptions,
-  type Socket,
-  type SocketOptions,
-} from "socket.io-client";
-import type {
-  Message,
-  RoomStateChanged,
-  UserDetails,
-} from "$lib/@types/user.type";
-import {
-  availableRooms,
-  gameSettings,
-  gameState,
-} from "$lib/store/game.svelte";
-import { WebRTCConnection } from "./rtc.svelte";
-import type {
-  EventsFromClients,
-  EventsToClients,
-} from "$lib/../../vite-ws-dev";
+import ioClient, { type ManagerOptions, type Socket, type SocketOptions } from 'socket.io-client';
+import type { Message, RoomStateChanged, UserDetails } from '$lib/@types/user.type';
+import { availableRooms, gameSettings, gameState } from '$lib/store/game.svelte';
+import { WebRTCConnection } from './rtc.svelte';
+import type { EventsFromClients, EventsToClients } from '$lib/../../vite-ws-dev';
 
 export type SocketClient = Socket<EventsToClients, EventsFromClients>;
 
@@ -27,14 +12,11 @@ class SocketStore {
   public isHost = false;
   public webrtc: WebRTCConnection | null = null;
 
-  async connect(
-    url: string,
-    options?: Partial<ManagerOptions & SocketOptions>,
-  ) {
+  async connect(url: string, options?: Partial<ManagerOptions & SocketOptions>) {
     return new Promise<void>((resolve) => {
       this.socket = ioClient(url, options);
       this.webrtc = new WebRTCConnection();
-      this.socket.on("connect", async () => {
+      this.socket.on('connect', async () => {
         if (!this.socket?.id) return;
         gameState.userId = this.socket.id;
         this.addListeners();
@@ -48,8 +30,8 @@ class SocketStore {
     if (!s || !userDetails || !this.webrtc) return;
     await this.webrtc.createLocalConnection();
     await new Promise((resolve) => setTimeout(resolve, 1000)); // wait for all ice candidates to be generated
-    const room = await s.emitWithAck("createRoom", userDetails, {
-      sdp: this.webrtc.sdp,
+    const room = await s.emitWithAck('createRoom', userDetails, {
+      sdp: this.webrtc.sdp
     });
     this.isHost = true;
     gameState.room.roomId = room.roomId;
@@ -61,7 +43,7 @@ class SocketStore {
   async seekRooms() {
     const s = this.socket;
     if (!s) return;
-    const seekRooms = await s.emitWithAck("seekRooms");
+    const seekRooms = await s.emitWithAck('seekRooms');
     availableRooms.rooms = seekRooms;
     gameState.isRoomConnecting = false;
   }
@@ -69,11 +51,16 @@ class SocketStore {
   async joinRoom(roomId: string) {
     const s = this.socket;
     if (!s || !this.webrtc) return;
-    const selectedRoom = await s.emitWithAck("selectRoom", roomId);
+    const selectedRoom = await s.emitWithAck('selectRoom', roomId);
     await this.webrtc.joinRemoteConnection(selectedRoom);
-    const joinedRoom = await s.emitWithAck("joinRoom", roomId, {
-      sdp: this.webrtc.sdp,
-    }, gameSettings.value);
+    const joinedRoom = await s.emitWithAck(
+      'joinRoom',
+      roomId,
+      {
+        sdp: this.webrtc.sdp
+      },
+      gameSettings.value
+    );
     gameState.room.players = joinedRoom.users;
     gameState.room.messages = joinedRoom.messages;
     gameState.room.roomId = roomId;
@@ -82,7 +69,7 @@ class SocketStore {
   }
 
   changeName(name: string) {
-    this.socket?.emit("name", name);
+    this.socket?.emit('name', name);
   }
 
   disconnect() {
@@ -92,16 +79,16 @@ class SocketStore {
   private addListeners() {
     const s = this.socket;
     if (!s) return;
-    s.on("message", (message: Message) => this.onMessageReceived(message));
-    s.on("roomState", (roomState: RoomStateChanged) => {
+    s.on('message', (message: Message) => this.onMessageReceived(message));
+    s.on('roomState', (roomState: RoomStateChanged) => {
       switch (roomState.event) {
-        case "user_joined":
+        case 'user_joined':
           this.onUserJoined(roomState);
           break;
-        case "user_left":
+        case 'user_left':
           this.onUserLeft(roomState);
           break;
-        case "user_name_changed":
+        case 'user_name_changed':
           this.onUserNameChanged(roomState);
           break;
       }
@@ -109,11 +96,11 @@ class SocketStore {
   }
 
   private onMessageReceived = (message: Message) => {
-    console.log("message received", message);
+    console.log('message received', message);
   };
 
   private onUserJoined(roomState: RoomStateChanged) {
-    console.log("user joined", roomState);
+    console.log('user joined', roomState);
     gameState.room.players = roomState.users;
     const user = roomState.users.find((u) => u.id === roomState.user);
     if (!user || !this.webrtc) return;
