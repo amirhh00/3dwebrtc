@@ -8,9 +8,16 @@ import type {
   RoomStateChanged,
   UserDetails,
 } from "$lib/@types/user.type";
-import { availableRooms, gameState } from "$lib/store/game.svelte.ts";
-import { WebRTCConnection } from "./rtc.svelte.ts";
-import type { EventsFromClients, EventsToClients } from "$lib/@types/socket.type.ts";
+import {
+  availableRooms,
+  gameSettings,
+  gameState,
+} from "$lib/store/game.svelte";
+import { WebRTCConnection } from "./rtc.svelte";
+import type {
+  EventsFromClients,
+  EventsToClients,
+} from "$lib/../../vite-ws-dev";
 
 export type SocketClient = Socket<EventsToClients, EventsFromClients>;
 
@@ -62,11 +69,11 @@ class SocketStore {
   async joinRoom(roomId: string) {
     const s = this.socket;
     if (!s || !this.webrtc) return;
-    let selectedRoom = await s.emitWithAck("selectRoom", roomId);
+    const selectedRoom = await s.emitWithAck("selectRoom", roomId);
     await this.webrtc.joinRemoteConnection(selectedRoom);
     const joinedRoom = await s.emitWithAck("joinRoom", roomId, {
       sdp: this.webrtc.sdp,
-    });
+    }, gameSettings.value);
     gameState.room.players = joinedRoom.users;
     gameState.room.messages = joinedRoom.messages;
     gameState.room.roomId = roomId;

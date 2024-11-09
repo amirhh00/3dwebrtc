@@ -13,7 +13,7 @@
   <main class="bg-slate-100 dark:bg-slate-900">
     <slot></slot>
   </main>
-  <footer class="row-start-3 border-t-[1px] flex gap-6 flex-wrap items-center justify-center">
+  <!-- <footer class="row-start-3 border-t-[1px] flex gap-6 flex-wrap items-center justify-center">
     footer
-  </footer>
+  </footer> -->
 </div>
