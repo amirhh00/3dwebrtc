@@ -48,8 +48,6 @@
     "lucide-svelte": "^0.453.0",
     "mode-watcher": "^0.4.1",
     "pg": "^8.13.1",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
     "sveltekit-sse": "^0.13.9",
     "three": "^0.169.0"
   }
