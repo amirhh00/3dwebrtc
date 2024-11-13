@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Euler, Vector3 } from 'three';
+  import { Clock, Euler, Vector3 } from 'three';
   import { T, useTask } from '@threlte/core';
   import { RigidBody, CollisionGroups, Collider } from '@threlte/rapier';
   import ThirdPersonControls from './ThirdPersonControls.svelte';
@@ -7,8 +7,9 @@
   import type { Group } from 'three';
   import { gameSettings, gameState } from '$lib/store/game.svelte';
   import OtherPlayers from './OtherPlayers.svelte';
-  import { socket } from '$lib/store/socket.svelte';
+  import { gameConnection } from '$lib/connections/Game.connection';
   import PlayerModel from './PlayerModel.svelte';
+  import { onMount } from 'svelte';
   // import PointerLockControls from './PointerLockControls.svelte';
 
   type PlayerProps = {
@@ -43,14 +44,35 @@
     temp.y = linVel.y;
     // finally set the velocities and wake up the body
     rigidBody.setLinvel(temp, true);
-
-    // when body position changes update camera position
-    const pos = rigidBody.translation();
-    position = [pos.x, pos.y, pos.z];
-    if (socket.webrtc) {
-      socket.webrtc.sendPositionUpdate({ x: pos.x, y: pos.y, z: pos.z });
-    }
   });
+
+  // onMount(() => {
+  //   let clock = new Clock();
+  //   let delta = 0;
+  //   // 30 fps
+  //   let interval = 1 / 30;
+  //   /**
+  //    * send position update to the host every 30fps
+  //    */
+  //   function update() {
+  //     requestAnimationFrame(update);
+  //     delta += clock.getDelta();
+
+  //     if (delta > interval) {
+  //       // The draw or time dependent code are here
+  //       if (gameConnection.webrtc && rigidBody) {
+  //         const x = rigidBody?.translation()?.x;
+  //         const y = rigidBody?.translation()?.y;
+  //         const z = rigidBody?.translation()?.z;
+  //         gameConnection.webrtc.sendPositionUpdate(x, y, z);
+  //       }
+
+  //       delta = delta % interval;
+  //     }
+  //   }
+
+  //   update();
+  // });
 
   function onKeyDown(e: KeyboardEvent) {
     if (document.activeElement?.tagName === 'INPUT') return;
@@ -112,9 +134,9 @@
       <Collider shape={'capsule'} args={[height / 2, radius]} />
       <PlayerModel
         playerId={gameState.userId}
-        playerName={gameSettings.value.playerName}
+        playerName={gameSettings.playerName}
         meshProps={{ position: [0, 0, 0] }}
-        playerColor={gameSettings.value.playerColor}
+        playerColor={gameSettings.playerColor}
         {height}
         {radius}
       />

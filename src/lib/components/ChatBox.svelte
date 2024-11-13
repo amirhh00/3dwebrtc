@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { socket } from '$lib/store/socket.svelte';
+  import { gameConnection } from '$lib/connections/Game.connection';
 
   let showChatBox = $state(false);
   let textBoxRef: HTMLInputElement | null = $state(null);
@@ -11,7 +11,7 @@
     if (e.key === 'Enter') {
       // send message
       if (showChatBox && textBoxRef && !!textBoxRef.value) {
-        socket.webrtc?.sendMessage(textBoxRef.value);
+        gameConnection.webrtc?.sendMessage(textBoxRef.value);
       }
       // hide chat box
       showChatBox = !showChatBox;

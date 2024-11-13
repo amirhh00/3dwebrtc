@@ -1,11 +1,11 @@
 // src/lib/notify.ts
-import pool from '$lib/db';
+import pool from '$lib/server/db/db';
 
 /**
  * Notify all clients in a room that the room has been updated
  * @param roomId  The room id
  * @param data  The data to send to the room
- * @example 
+ * @example
  * await notifyRoomUpdate('room123', { event: 'userJoined', userId: 'user456' });
  */
 export async function notifyRoomUpdate(roomId: string, data: unknown) {

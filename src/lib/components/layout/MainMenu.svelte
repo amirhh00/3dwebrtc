@@ -2,16 +2,13 @@
   import { gameSettings, gameState, availableRooms } from '$lib/store/game.svelte';
   import { fade } from 'svelte/transition';
   import { cn } from '$lib/utils';
-  import { page } from '$app/stores';
   import { Button } from '$lib/components/ui/button';
   import { browser } from '$app/environment';
-  import { socket } from '$lib/store/socket.svelte';
-  import { onMount } from 'svelte';
+  import { gameConnection as conn } from '$lib/connections/Game.connection';
   import type { UserDetails } from '$lib/@types/user.type';
 
   // svelte-ignore non_reactive_update
   let isFirstRender = true;
-  let isLoadingSocketConnection = $state(true);
 
   const MainMenuScreens = ['Main Menu', 'Host Game', 'Join Game', 'Settings'] as const;
   let currentMainMenuScreen = $state<(typeof MainMenuScreens)[number]>('Main Menu');
@@ -20,13 +17,6 @@
       isFirstRender = false;
     }
     return gameState.isPaused;
-  });
-
-  onMount(() => {
-    (async () => {
-      await socket.connect(`${$page.url.host}/`);
-      isLoadingSocketConnection = false;
-    })();
   });
 
   function onKeyDown(e: KeyboardEvent) {
@@ -46,24 +36,24 @@
     currentMainMenuScreen = 'Host Game';
     gameState.isRoomConnecting = true;
     let userDetails: UserDetails | undefined = undefined;
-    if (!!gameSettings.value.playerName || !!gameSettings.value.playerColor) {
+    if (!!gameSettings.playerName || !!gameSettings.playerColor) {
       userDetails = {
-        name: gameSettings.value.playerName,
-        color: gameSettings.value.playerColor
+        name: gameSettings.playerName,
+        color: gameSettings.playerColor
       };
     }
-    await socket.createRoom(userDetails);
+    await conn.createRoom();
   }
 
   function seekRooms() {
     currentMainMenuScreen = 'Join Game';
-    socket.seekRooms();
+    conn.seekRooms();
   }
 
   function joinRoom(roomId: string) {
     gameState.isRoomConnecting = true;
 
-    socket.joinRoom(roomId);
+    conn.joinRoom(roomId);
   }
 
   async function handleSettingChange(e: Event) {
@@ -74,12 +64,11 @@
     const mic = formData.get('mic') === 'on';
     const muted = formData.get('muted') === 'on';
     const playerColor = formData.get('playerColor') as string;
-    gameSettings.value = {
-      playerName: uname,
-      mic,
-      mute: muted,
-      playerColor
-    };
+    gameSettings.mic = mic;
+    gameSettings.mute = muted;
+    gameSettings.playerName = uname;
+    gameSettings.playerColor = playerColor;
+    conn.changeUserDetails(uname, playerColor, gameState.userId);
   }
 </script>
 
@@ -117,12 +106,10 @@
         <!-- Main Menu Screen -->
         {#if currentMainMenuScreen === 'Main Menu'}
           <li>
-            <button disabled={isLoadingSocketConnection} onclick={handleHostGame}>
-              Host a new game
-            </button>
+            <button onclick={handleHostGame}> Host a new game </button>
           </li>
           <li>
-            <button disabled={isLoadingSocketConnection} onclick={seekRooms}> Join a game </button>
+            <button onclick={seekRooms}> Join a game </button>
           </li>
           <li>
             <button onclick={() => (currentMainMenuScreen = 'Settings')}> Settings </button>
@@ -165,23 +152,13 @@
             <div class="">
               <label class="flex w-full justify-between items-center">
                 Enable microphone
-                <input
-                  checked={gameSettings.value.mic}
-                  name="mic"
-                  class="float-end"
-                  type="checkbox"
-                />
+                <input checked={gameSettings.mic} name="mic" class="float-end" type="checkbox" />
               </label>
             </div>
             <div class="">
               <label class="flex w-full justify-between items-center">
                 Mute Sound
-                <input
-                  checked={gameSettings.value.mute}
-                  name="muted"
-                  class="float-end"
-                  type="checkbox"
-                />
+                <input checked={gameSettings.mute} name="muted" class="float-end" type="checkbox" />
               </label>
             </div>
             <div class="">
@@ -191,7 +168,7 @@
                   class="float-end ml-4 p-1 text-current"
                   placeholder="Your name"
                   name="username"
-                  value={gameSettings.value.playerName}
+                  value={gameSettings.playerName}
                 />
               </label>
             </div>
@@ -199,7 +176,7 @@
               <label class="flex w-full justify-between items-center">
                 Player color:
                 <input
-                  value={gameSettings.value.playerColor}
+                  value={gameSettings.playerColor}
                   name="playerColor"
                   class="float-end"
                   type="color"
