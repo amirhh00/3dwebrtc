@@ -3,9 +3,24 @@
   import { World } from '@threlte/rapier';
   import Scene from './Scene.svelte';
   import MainMenu from '$lib/components/layout/MainMenu.svelte';
-  import { PerfMonitor } from '@threlte/extras';
-  import { dev } from '$app/environment';
+  import { browser, dev } from '$app/environment';
   import ChatBox from '$lib/components/ChatBox.svelte';
+  import { onMount } from 'svelte';
+  import { gameSettings, gameState } from '$lib/store/game.svelte';
+
+  interface MainMenuProps {
+    user: (typeof import('$lib/server/db/schema').users)['$inferSelect'];
+  }
+
+  const { user }: MainMenuProps = $props();
+
+  onMount(() => {
+    if (browser) {
+      gameSettings.playerName = user.name;
+      gameSettings.playerColor = user.color || '#000000';
+      gameState.userId = user.id;
+    }
+  });
 </script>
 
 <div class="absolute h-full w-full">
@@ -13,9 +28,9 @@
 
   <div class="h-full w-full">
     <Canvas>
-      {#if dev}
+      <!-- {#if dev}
         <PerfMonitor anchorY="bottom" />
-      {/if}
+      {/if} -->
       <World>
         <Scene />
       </World>
