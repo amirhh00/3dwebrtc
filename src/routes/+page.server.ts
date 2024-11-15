@@ -29,7 +29,6 @@ export async function load({ cookies, request }) {
     );
     user = userFromDb[0];
     if (!user) {
-      console.error('User not found in db');
       // reload page to create a new user
       cookies.set('userId', '', { expires: new Date(0), path: '/' });
       throw redirect(302, '/');
