@@ -22,16 +22,16 @@ importers:
         version: 3.0.0-next.13(@dimforge/rapier3d-compat@0.14.0)(svelte@5.1.15)(three@0.170.0)
       drizzle-orm:
         specifier: ^0.36.1
-        version: 0.36.1(@cloudflare/workers-types@4.20241106.0)(@types/pg@8.11.10)(pg@8.13.1)
+        version: 0.36.2(@cloudflare/workers-types@4.20241106.0)(@types/pg@8.11.10)(pg@8.13.1)(postgres@3.4.5)
       lucide-svelte:
         specifier: ^0.456.0
         version: 0.456.0(svelte@5.1.15)
       mode-watcher:
         specifier: ^0.4.1
         version: 0.4.1(svelte@5.1.15)
-      pg:
-        specifier: ^8.13.1
-        version: 8.13.1
+      postgres:
+        specifier: ^3.4.5
+        version: 3.4.5
       sveltekit-sse:
         specifier: ^0.13.9
         version: 0.13.9(@microsoft/fetch-event-source@2.0.1)(@sveltejs/kit@2.8.0(@sveltejs/vite-plugin-svelte@4.0.0(svelte@5.1.15)(vite@5.4.11(@types/node@22.9.0)))(svelte@5.1.15)(vite@5.4.11(@types/node@22.9.0)))(svelte@5.1.15)
@@ -1418,8 +1418,8 @@ packages:
     resolution: {integrity: sha512-KqI+CS2Ga9GYIrXpxpCDUJJrH/AT/k4UY0Pb4oRgQEGkgN1EdCnqp664cXgwPWjDr5RBtTsjZipw8+8C//K63A==}
     hasBin: true
 
-  drizzle-orm@0.36.1:
-    resolution: {integrity: sha512-F4hbimnMEhyWzDowQB4xEuVJJWXLHZYD7FYwvo8RImY+N7pStGqsbfmT95jDbec1s4qKmQbiuxEDZY90LRrfIw==}
+  drizzle-orm@0.36.2:
+    resolution: {integrity: sha512-uVwIdQMo+zwI09hCSNVR29tYn4Vw6F7gga/CsZgDJmTSGDdUdLo+Ur45Qc3gDK7oFTxD/eRANNnPgvPmRY+jSA==}
     peerDependencies:
       '@aws-sdk/client-rds-data': '>=3'
       '@cloudflare/workers-types': '>=3'
@@ -1440,7 +1440,7 @@ packages:
       '@xata.io/client': '*'
       better-sqlite3: '>=7'
       bun-types: '*'
-      expo-sqlite: '>=13.2.0'
+      expo-sqlite: '>=14.0.0'
       knex: '*'
       kysely: '*'
       mysql2: '>=2'
@@ -2214,6 +2214,10 @@ packages:
 
   postgres-range@1.1.4:
     resolution: {integrity: sha512-i/hbxIE9803Alj/6ytL7UHQxRvZkI9O4Sy+J3HGc4F4oo/2eQAjTSNJ0bfxyse3bH0nuVesCk+3IRLaMtG3H6w==}
+
+  postgres@3.4.5:
+    resolution: {integrity: sha512-cDWgoah1Gez9rN3H4165peY9qfpEo+SA61oQv65O3cRUE1pOEoJWwddwcqKE8XZYjbblOJlYDlLV4h67HrEVDg==}
+    engines: {node: '>=12'}
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -3770,11 +3774,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.36.1(@cloudflare/workers-types@4.20241106.0)(@types/pg@8.11.10)(pg@8.13.1):
+  drizzle-orm@0.36.2(@cloudflare/workers-types@4.20241106.0)(@types/pg@8.11.10)(pg@8.13.1)(postgres@3.4.5):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20241106.0
       '@types/pg': 8.11.10
       pg: 8.13.1
+      postgres: 3.4.5
 
   earcut@2.2.4: {}
 
@@ -4371,7 +4376,8 @@ snapshots:
   pg-cloudflare@1.1.1:
     optional: true
 
-  pg-connection-string@2.7.0: {}
+  pg-connection-string@2.7.0:
+    optional: true
 
   pg-int8@1.0.1: {}
 
@@ -4380,6 +4386,7 @@ snapshots:
   pg-pool@3.7.0(pg@8.13.1):
     dependencies:
       pg: 8.13.1
+    optional: true
 
   pg-protocol@1.7.0: {}
 
@@ -4390,6 +4397,7 @@ snapshots:
       postgres-bytea: 1.0.0
       postgres-date: 1.0.7
       postgres-interval: 1.2.0
+    optional: true
 
   pg-types@4.0.2:
     dependencies:
@@ -4410,10 +4418,12 @@ snapshots:
       pgpass: 1.0.5
     optionalDependencies:
       pg-cloudflare: 1.1.1
+    optional: true
 
   pgpass@1.0.5:
     dependencies:
       split2: 4.2.0
+    optional: true
 
   picocolors@1.1.1: {}
 
@@ -4486,27 +4496,33 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postgres-array@2.0.0: {}
+  postgres-array@2.0.0:
+    optional: true
 
   postgres-array@3.0.2: {}
 
-  postgres-bytea@1.0.0: {}
+  postgres-bytea@1.0.0:
+    optional: true
 
   postgres-bytea@3.0.0:
     dependencies:
       obuf: 1.1.2
 
-  postgres-date@1.0.7: {}
+  postgres-date@1.0.7:
+    optional: true
 
   postgres-date@2.1.0: {}
 
   postgres-interval@1.2.0:
     dependencies:
       xtend: 4.0.2
+    optional: true
 
   postgres-interval@3.0.0: {}
 
   postgres-range@1.1.4: {}
+
+  postgres@3.4.5: {}
 
   prelude-ls@1.2.1: {}
 
@@ -4639,7 +4655,8 @@ snapshots:
 
   sourcemap-codec@1.4.8: {}
 
-  split2@4.2.0: {}
+  split2@4.2.0:
+    optional: true
 
   stacktracey@2.1.8:
     dependencies:
@@ -4979,7 +4996,8 @@ snapshots:
 
   ws@8.18.0: {}
 
-  xtend@4.0.2: {}
+  xtend@4.0.2:
+    optional: true
 
   xxhash-wasm@1.0.2: {}
 

@@ -16,7 +16,7 @@ export async function load({ cookies, request }) {
       ON CONFLICT (id) DO NOTHING
       RETURNING *
     `)
-    ).rows[0];
+    )[0];
     cookies.set('userId', user.id, {
       path: '/',
       httpOnly: true,
@@ -24,7 +24,7 @@ export async function load({ cookies, request }) {
     });
   } else {
     // get user from db
-    const { rows: userFromDb } = await db.execute<UserFromDb>(
+    const userFromDb = await db.execute<UserFromDb>(
       sql`SELECT id, name, color FROM users WHERE id=${userId}`
     );
     user = userFromDb[0];

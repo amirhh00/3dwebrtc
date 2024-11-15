@@ -1,10 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { db, pool } from '$lib/server/db/db';
+import { db, postgresClient } from '$lib/server/db/db';
 import { eq, sql } from 'drizzle-orm';
 import { users } from '$lib/server/db/schema';
 // import { SdpEventHandler } from '$lib/server/sdp.event';
 import { getCurrentRoomState, hashUUIDtoSimpleInteger } from '$lib/server/helper/db.functions';
-import type { Notification } from 'pg';
+import { getDBListener } from '$lib/server/db/db-listener';
 
 /**
  * @description create a new room using server sent events (SSE) and return the roomId while listening for the room's changes (notifiacations)
@@ -48,30 +48,40 @@ export const GET: RequestHandler = async ({ cookies }) => {
   RETURNING new_room.*;
 `);
 
-  const room = result.rows[0] as { id: string };
+  const room = result[0] as { id: string };
   let isRoomSent = false;
   // const sdpEventHandler = new SdpEventHandler();
-  const roomChannel = `room_${hashUUIDtoSimpleInteger(room.id)}`;
-  const client = await pool.connect();
-  await client.query(`LISTEN ${roomChannel}`);
+  // const roomChannel = `room_${hashUUIDtoSimpleInteger(room.id)}`;
+  // const client = await pool.connect();
+  // await client.query(`LISTEN ${roomChannel}`);
+  // db.$client.query(`LISTEN ${roomChannel}`);
   const stream = new ReadableStream({
     async start(controller) {
-      const notificationHandler = async (msg: Notification) => {
-        if (msg.channel === roomChannel) {
-          controller.enqueue(`event: newUser\n`);
-          const newUser = JSON.parse(msg.payload!);
-          controller.enqueue(
-            `data: ${JSON.stringify(await getCurrentRoomState(room.id, { newUser }))}\n\n`
-          );
-        }
-      };
+      // const notificationHandler = async (msg: Notification) => {
+      //   if (msg.channel === roomChannel) {
+      //     controller.enqueue(`event: newUser\n`);
+      //     const newUser = JSON.parse(msg.payload!);
+      //     controller.enqueue(
+      //       `data: ${JSON.stringify(await getCurrentRoomState(room.id, { newUser }))}\n\n`
+      //     );
+      //   }
+      // };
       // sdpEventHandler.on(`room-${hashUUIDtoSimpleInteger(room.id)}`, async (newUser) => {
       //   controller.enqueue(`event: newUser\n`);
       //   controller.enqueue(
       //     `data: ${JSON.stringify(await getCurrentRoomState(room.id, { newUser }))}\n\n`
       //   );
       // });
-      client.on('notification', notificationHandler);
+      // client.on('notification', notificationHandler);
+      getDBListener({
+        channel: `room_${hashUUIDtoSimpleInteger(room.id)}`,
+        onNotify: async (payload) => {
+          controller.enqueue(`event: newUser\n`);
+          controller.enqueue(
+            `data: ${JSON.stringify(await getCurrentRoomState(room.id, { newUser: payload }))}\n\n`
+          );
+        }
+      });
       if (!isRoomSent) {
         controller.enqueue(`data: ${JSON.stringify(await getCurrentRoomState(room.id))}\n\n`);
         isRoomSent = true;
@@ -79,9 +89,10 @@ export const GET: RequestHandler = async ({ cookies }) => {
     },
     cancel() {
       // sdpEventHandler.removeAllListeners(`room-${hashUUIDtoSimpleInteger(room.id)}`);
-      client.removeAllListeners('notification');
-      client.query(`UNLISTEN ${roomChannel}`).catch(console.error);
-      client.release();
+      // db.$client.removeAllListeners('notification');
+      // db.$client.query(`UNLISTEN ${roomChannel}`).catch(console.error);
+      // client.release();
+      db.execute(sql`UNLISTEN room_${hashUUIDtoSimpleInteger(room.id)}`);
       dbCleanup(userId, room.id);
     }
   });
@@ -111,10 +122,11 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
   }
 
   // const sdpEventHandler = new SdpEventHandler();
-  const client = await pool.connect();
-  const playerChannel = `sdp_${hashUUIDtoSimpleInteger(playerId)}`;
-  // sdpEventHandler.emit(`sdp-${hashUUIDtoSimpleInteger(playerId)}`, sdp);
-  client.query(`NOTIFY ${playerChannel}, '${sdp}'`);
+  // const client = await pool.connect();
+  // const playerChannel = `sdp_${hashUUIDtoSimpleInteger(playerId)}`;
+  // // sdpEventHandler.emit(`sdp-${hashUUIDtoSimpleInteger(playerId)}`, sdp);
+  // db.$client.query(`NOTIFY ${playerChannel}, '${sdp}'`);
+  postgresClient.notify(`sdp_${hashUUIDtoSimpleInteger(playerId)}`, sdp);
 
   return new Response('Answer sent to player', {
     headers: { 'Content-Type': 'application/json' }
@@ -139,7 +151,7 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
   const verfiedHost = await db.execute(sql`
     SELECT 1 FROM users WHERE id=${userId} AND is_host=true AND room_id=${roomId};
   `);
-  if (verfiedHost.rowCount === 0) {
+  if (verfiedHost.count === 0) {
     return new Response('Unauthorized', { status: 401 });
   }
 
@@ -150,7 +162,7 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
     RETURNING *;
   `);
 
-  return new Response(JSON.stringify(result.rows[0]), {
+  return new Response(JSON.stringify(result[0]), {
     headers: { 'Content-Type': 'application/json' }
   });
 };
@@ -170,7 +182,7 @@ export const DELETE: RequestHandler = async ({ cookies, request }) => {
   const verfiedHost = await db.execute(sql`
     SELECT 1 FROM users WHERE id=${userId} AND is_host=true AND room_id=${roomId};
   `);
-  if (verfiedHost.rowCount === 0) {
+  if (verfiedHost.count === 0) {
     return new Response('Unauthorized', { status: 401 });
   }
 
@@ -181,7 +193,7 @@ export const DELETE: RequestHandler = async ({ cookies, request }) => {
     RETURNING *;
   `);
 
-  return new Response(JSON.stringify(result.rows[0]), {
+  return new Response(JSON.stringify(result[0]), {
     headers: { 'Content-Type': 'application/json' }
   });
 };

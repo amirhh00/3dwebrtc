@@ -29,14 +29,14 @@ export async function getCurrentRoomState(
 `);
   return options?.newUser
     ? {
-        ...roomState.rows[0],
+        ...roomState[0],
         newUser: {
-          ...roomState.rows[0].users.find((u) => u.id === options?.newUser?.id),
+          ...roomState[0].users.find((u) => u.id === options?.newUser?.id),
           sdp: options.newUser.sdp,
           id: options.newUser.id
         }
       }
-    : roomState.rows[0];
+    : roomState[0];
 }
 
 export function hashUUIDtoSimpleInteger(uuid: string): number {

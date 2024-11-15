@@ -58,7 +58,7 @@
     "drizzle-orm": "^0.36.1",
     "lucide-svelte": "^0.456.0",
     "mode-watcher": "^0.4.1",
-    "pg": "^8.13.1",
+    "postgres": "^3.4.5",
     "sveltekit-sse": "^0.13.9",
     "three": "^0.170.0"
   }

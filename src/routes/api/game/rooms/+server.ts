@@ -1,9 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { db, pool } from '$lib/server/db/db';
+import { db, postgresClient } from '$lib/server/db/db';
 import { sql } from 'drizzle-orm';
-// import { SdpEventHandler } from '$lib/server/sdp.event';
 import { getCurrentRoomState, hashUUIDtoSimpleInteger } from '$lib/server/helper/db.functions';
-import type { Notification } from 'pg';
+import { getDBListener } from '$lib/server/db/db-listener';
 
 /**
  * @description Get the list of rooms
@@ -14,7 +13,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const { rows } = await db.execute(
+  const rows = await db.execute(
     sql`SELECT rooms.id AS "roomId",
       MAX(CASE WHEN users.is_host THEN users.name END) AS "roomName",
       COUNT(users.id) AS "playersCount"
@@ -57,29 +56,38 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 };
 
 async function waitForAnswerSdp(userId: string, roomId: string, sdp: string) {
-  const client = await pool.connect();
+  // const client = await pool.connect();
   return new Promise<string>((resolve) => {
-    // const sdpEventHandler = new SdpEventHandler();
-    // sdpEventHandler.emit(`room-${hashUUIDtoSimpleInteger(roomId)}`, { id: userId, sdp });
-    client.query(
-      `NOTIFY room_${hashUUIDtoSimpleInteger(roomId)}, '${JSON.stringify({ id: userId, sdp })}'`
+    postgresClient.notify(
+      `room_${hashUUIDtoSimpleInteger(roomId)}`,
+      JSON.stringify({ id: userId, sdp })
     );
-    // sdpEventHandler.on(`sdp-${hashUUIDtoSimpleInteger(userId)}`, (data) => {
-    //   resolve(data);
-    // });
-    const playerChannel = `sdp_${hashUUIDtoSimpleInteger(userId)}`;
-    client.query(`LISTEN ${playerChannel}`);
-    const handleNotification = (msg: Notification) => {
-      if (msg.channel === playerChannel) {
-        const data = JSON.parse(msg.payload!);
-        client.removeListener('notification', handleNotification);
-        client.query(`UNLISTEN ${playerChannel}`);
-        client.release();
-        resolve(data);
+    getDBListener({
+      channel: `sdp_${hashUUIDtoSimpleInteger(userId)}`,
+      onNotify: (payload) => {
+        db.execute(sql`UNLISTEN sdp_${hashUUIDtoSimpleInteger(userId)}`);
+        resolve(payload);
       }
-    };
-    client.on('notification', handleNotification);
+    });
+    // // const sdpEventHandler = new SdpEventHandler();
+    // sdpEventHandler.emit(`room-${hashUUIDtoSimpleInteger(roomId)}`, { id: userId, sdp });
+    // db.$client.query(
+    //   `NOTIFY room_${hashUUIDtoSimpleInteger(roomId)}, '${JSON.stringify({ id: userId, sdp })}'`
+    // );
+    // // sdpEventHandler.on(`sdp-${hashUUIDtoSimpleInteger(userId)}`, (data) => {
+    // //   resolve(data);
+    // // });
+    // const playerChannel = `sdp_${hashUUIDtoSimpleInteger(userId)}`;
+    // db.$client.query(`LISTEN ${playerChannel}`);
+    // const handleNotification = (msg: Notification) => {
+    //   if (msg.channel === playerChannel) {
+    //     const data = JSON.parse(msg.payload!);
+    //     db.$client.removeListener('notification', handleNotification);
+    //     db.$client.query(`UNLISTEN ${playerChannel}`);
+    //     // client.release();
+    //     resolve(data);
+    //   }
+    // };
+    // db.$client.addListener('notification', handleNotification);
   });
 }
-
-// await db.execute(`NOTIFY room_${hashUUIDtoSimpleInteger(roomId)}, '${JSON.stringify(tempUser)}'`);
