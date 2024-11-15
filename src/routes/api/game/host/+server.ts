@@ -102,7 +102,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
       'Content-Type': 'text/event-stream',
       'Content-Encoding': 'none',
       Connection: 'keep-alive',
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'no-cache no-store no-transform'
     }
   });
 };
