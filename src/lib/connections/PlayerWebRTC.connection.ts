@@ -1,6 +1,13 @@
-import type { RoomState } from '../@types/user.type';
-import { gameState } from '../store/game.svelte';
+import type { RoomState } from '$lib/@types/user.type';
+import { gameState } from '$lib/store/game.svelte';
+import type { RTCMessage } from '../@types/Rtc.type';
 import { WebRTCConnection } from './WebRTC.connection';
+
+interface customWindow extends Window {
+  client?: PlayerConnection;
+}
+
+declare const window: customWindow;
 
 export class PlayerConnection extends WebRTCConnection {
   private peerConnection: RTCPeerConnection;
@@ -8,6 +15,7 @@ export class PlayerConnection extends WebRTCConnection {
   private isIceCandidateHandled = false;
   constructor(playerId: string, roomId: string) {
     super('player', playerId, roomId);
+    window.client = this;
     this.peerConnection = new RTCPeerConnection({
       iceServers: [
         {
@@ -46,19 +54,56 @@ export class PlayerConnection extends WebRTCConnection {
     const dataChannel = this.peerConnection.createDataChannel(label);
 
     dataChannel.onopen = () => {
-      console.log(`${this.role} data channel open`);
+      this.hasDataChannel = true;
       gameState.isRoomConnecting = false;
       gameState.isPaused = false;
     };
-    dataChannel.onmessage = (event) => this.handleDataChannelMessage(event.data);
+    dataChannel.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      switch (message.event) {
+        case 'userInfoChange':
+          gameState.room.players = message.room.players;
+          gameState.room.messages = message.room.messages;
+          break;
+        // case 'chatMessage':
+        //   gameState.room.messages.push({
+        //     message: message.message,
+        //     from: message.from,
+        //     time: message.time
+        //   });
+        //   break;
+        case 'positionUpdate':
+          gameState.room.players = gameState.room.players?.map((player) => {
+            if (player.id === message.from) {
+              player.position = message.position;
+            }
+            return player;
+          });
+          break;
+        case 'userLeft':
+          gameState.room.players = gameState.room.players?.filter(
+            (player) => player.id !== message.from
+          );
+          break;
+        case 'userJoined':
+          gameState.room.players?.push(message.user);
+          break;
+        default:
+          break;
+      }
+    };
+    dataChannel.onclose = () => {
+      console.log(`${this.role} data channel closed. reloading page..`);
+      window.location.reload();
+    };
     this.peerConnection.channel = dataChannel;
   }
 
   protected async handleIceCandidate() {
-    console.log('sending offer sdp to host');
     const response = await fetch(`/api/game/rooms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         sdp: this.playerSdp,
         roomId: this.roomId
@@ -84,13 +129,28 @@ export class PlayerConnection extends WebRTCConnection {
     throw new Error('Method not implemented.');
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public sendPositionUpdate(x: number, y: number, z: number): void {
-    throw new Error('Method not implemented.');
+    this.peerConnection.channel?.send(
+      JSON.stringify({
+        event: 'positionUpdate',
+        position: [x, y, z],
+        from: gameState.userId,
+        time: new Date().getTime()
+      } satisfies RTCMessage)
+    );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  public updateUserInfoChange(name: string, color: string, userId: string): void {
-    throw new Error('Method not implemented.');
+  public override async updateUserInfoChange(name: string, color: string, userId: string) {
+    const updatedUser = await super.updateUserInfoChange(name, color, userId);
+    this.peerConnection.channel?.send(
+      JSON.stringify({
+        event: 'userInfoChange',
+        user: updatedUser,
+        room: gameState.room,
+        from: gameState.userId,
+        time: new Date().getTime()
+      } satisfies RTCMessage)
+    );
+    return updatedUser;
   }
 }

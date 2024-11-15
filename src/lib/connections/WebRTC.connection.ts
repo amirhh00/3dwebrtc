@@ -1,17 +1,15 @@
+import type { UserClient } from '$lib/store/game.svelte';
+
 export abstract class WebRTCConnection {
   protected role: 'host' | 'player';
   protected userId: string;
   protected roomId: string;
+  public hasDataChannel = false;
 
   constructor(role: 'host' | 'player', userId: string, roomId: string) {
     this.role = role;
     this.userId = userId;
     this.roomId = roomId;
-  }
-
-  protected handleDataChannelMessage(data: string) {
-    console.log(`${this.role} received data:`, data);
-    // Process incoming data as needed
   }
 
   /**
@@ -29,10 +27,19 @@ export abstract class WebRTCConnection {
   public abstract sendMessage(message: string): void;
 
   /**
-   * Update the user info for the other peer
+   * Update the user info in the database and send the updated user info to the other peer(s)
    * @param name The updated name of the user
    * @param color The updated color of the user
    * @param userId The user ID of the user
    */
-  public abstract updateUserInfoChange(name: string, color: string, userId: string): void;
+  public async updateUserInfoChange(name: string, color: string, userId: string) {
+    const updatedUserRes = await fetch('/api/user', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color, userId }),
+      credentials: 'include'
+    });
+    const updatedUser: UserClient = await updatedUserRes.json();
+    return updatedUser;
+  }
 }

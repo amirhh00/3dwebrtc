@@ -2,7 +2,7 @@
   import { T, useTask, useThrelte } from '@threlte/core';
   import { HTML } from '@threlte/extras';
   import type { PlayerModelProps } from '$lib/@types/3D.type';
-  import type { Group, Mesh, Vector3 } from 'three';
+  import type { Group, Mesh } from 'three';
   import { gameState } from '$lib/store/game.svelte';
 
   const { playerName, playerId, playerColor, radius, height, meshProps }: PlayerModelProps =
@@ -15,25 +15,17 @@
   useTask(() => {
     tref?.lookAt(camera.current.position.x, height, camera.current.position.z);
     if (playerId !== gameState.userId) {
-      // always face the player
-      if (gameState.room?.players?.length && gameState.room.players.length > 1) {
-        for (let i = 0; i < gameState.room.players.length; i++) {
-          const player = gameState.room.players[i];
-          if (player.id === playerId && player.position && modelMesh) {
-            const pos = player.position as unknown as Vector3;
-            modelMesh.position.set(pos.x, pos.y, pos.z);
-          }
-        }
+      // if is one of otherPlayers
+      const player = gameState.room.players!.find((p) => p.id === playerId);
+      if (player && modelMesh && player.position) {
+        const [x, y, z] = player.position as [number, number, number];
+        modelMesh.position.set(x, y, z);
       }
     }
   });
 </script>
 
-<T.Mesh
-  bind:ref={modelMesh as any}
-  {...meshProps as any}
-  position={(meshProps?.position as any) ?? [Math.random() * 10, 3, Math.random() * 5]}
->
+<T.Mesh bind:ref={modelMesh as any} {...meshProps as any}>
   <T.Group bind:ref={tref}>
     <HTML zIndexRange={[0, 1]} center pointerEvents="none" transform position.y={height}>
       <p class="text-xs">

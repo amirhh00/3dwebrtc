@@ -7,7 +7,7 @@ export const gameSettings = $state({
   playerColor: '#000'
 });
 
-type UserClient = UserServer & {
+export type UserClient = UserServer & {
   position?: number | [x: number, y: number, z: number];
 };
 export interface Room extends SeekRoom {

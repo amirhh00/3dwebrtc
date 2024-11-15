@@ -24,11 +24,3 @@ export type SeekRoom = {
   roomName: string;
   playersCount: number;
 };
-
-export type RoomStateChanged = {
-  from: string;
-  event: 'user_left' | 'user_joined' | 'user_name_changed';
-  user: string;
-  users: UserServer[];
-  time: number;
-};
