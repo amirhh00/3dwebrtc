@@ -89,6 +89,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
+      'Content-Encoding': 'none',
       Connection: 'keep-alive',
       'Cache-Control': 'no-cache'
     }
