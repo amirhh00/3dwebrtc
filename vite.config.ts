@@ -5,20 +5,7 @@ import { defineConfig, type PluginOption, type ServerOptions } from 'vite';
 
 export default defineConfig((cfg) => {
   let server: ServerOptions | undefined = undefined;
-  const plugins: PluginOption[] = [
-    sveltekit()
-    // {
-    //   name: 'vite-plugin-mkcert',
-    //   // apply: 'build',
-    //   // enforce: 'post',
-    //   configResolved(config) {
-    //     // console.log('configureServer', import.meta.env?.POSTGRES_USER, process.env.POSTGRES_USER);
-    //     console.log('configureServer', config);
-    //     // const { setupDatabase } = await import('./src/lib/db.ts');
-    //     // setupDatabase();
-    //   }
-    // }
-  ];
+  const plugins: PluginOption[] = [sveltekit()];
   if (cfg.mode === 'development') {
     // plugins.push(mkcert());
     server = {

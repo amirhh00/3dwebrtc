@@ -1,15 +1,14 @@
 <script lang="ts">
-  import { Clock, Euler, Vector3 } from 'three';
+  import { Euler, Vector3 } from 'three';
   import { T, useTask } from '@threlte/core';
   import { RigidBody, CollisionGroups, Collider } from '@threlte/rapier';
   import ThirdPersonControls from './ThirdPersonControls.svelte';
   import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
   import type { Group } from 'three';
   import { gameSettings, gameState } from '$lib/store/game.svelte';
-  import OtherPlayers from './OtherPlayers.svelte';
   import { gameConnection } from '$lib/connections/Game.connection';
   import PlayerModel from './PlayerModel.svelte';
-  import { onMount } from 'svelte';
+  // import { onMount } from 'svelte';
   // import PointerLockControls from './PointerLockControls.svelte';
 
   type PlayerProps = {
@@ -44,6 +43,13 @@
     temp.y = linVel.y;
     // finally set the velocities and wake up the body
     rigidBody.setLinvel(temp, true);
+
+    // when body position changes update camera position
+    const pos = rigidBody.translation();
+    position = [pos.x, pos.y, pos.z];
+    if (gameConnection.webrtc?.hasDataChannel) {
+      gameConnection.webrtc.sendPositionUpdate(pos.x, pos.y, pos.z);
+    }
   });
 
   // onMount(() => {
@@ -135,8 +141,8 @@
       <PlayerModel
         playerId={gameState.userId}
         playerName={gameSettings.playerName}
-        meshProps={{ position: [0, 0, 0] }}
         playerColor={gameSettings.playerColor}
+        meshProps={{ position: [0, 0, 0] }}
         {height}
         {radius}
       />
@@ -145,5 +151,15 @@
 </T.Group>
 
 {#if gameState?.room?.players && gameState.room.players.length > 1}
-  <OtherPlayers {height} {radius} />
+  {#each gameState.room.players as player}
+    {#if player.id !== gameState.userId}
+      <PlayerModel
+        playerId={player.id}
+        playerName={player.name ?? player.id}
+        playerColor={player.color || '#000'}
+        {height}
+        {radius}
+      />
+    {/if}
+  {/each}
 {/if}

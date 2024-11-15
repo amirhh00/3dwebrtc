@@ -20,9 +20,21 @@ export const GET: RequestHandler = async ({ cookies }) => {
 
   if (!user) return new Response('Unauthorized', { status: 401 });
 
-  if (user.is_host) return new Response('User is already a host', { status: 400 });
-
-  if (user.roomId) return new Response('User is already in a room', { status: 400 });
+  if (user.is_host) {
+    // remove the user from the room if it is already a host and delete the room
+    await db.execute(sql`
+      WITH updated_host AS (
+        UPDATE users
+        SET is_host = false
+        WHERE id=${userId}
+      ),
+      deleted_room AS (
+        DELETE FROM rooms
+        WHERE id=${user.roomId}
+      )
+      SELECT 1;
+    `);
+  }
 
   const result = await db.execute(sql`
   WITH new_room AS (
@@ -64,11 +76,6 @@ export const GET: RequestHandler = async ({ cookies }) => {
         controller.enqueue(`data: ${JSON.stringify(await getCurrentRoomState(room.id))}\n\n`);
         isRoomSent = true;
       }
-      // request.signal.addEventListener('abort', async () => {
-      //   console.log('aborted');
-      //   controller.close();
-      //   await dbCleanup(userId, room.id);
-      // });
     },
     cancel() {
       // sdpEventHandler.removeAllListeners(`room-${hashUUIDtoSimpleInteger(room.id)}`);
@@ -139,6 +146,37 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
     UPDATE users
     SET room_id=${roomId}
     WHERE id=${playerId} AND room_id IS NULL
+    RETURNING *;
+  `);
+
+  return new Response(JSON.stringify(result.rows[0]), {
+    headers: { 'Content-Type': 'application/json' }
+  });
+};
+
+export const DELETE: RequestHandler = async ({ cookies, request }) => {
+  const userId = cookies.get('userId');
+  if (!userId) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const { roomId, playerId } = await request.json();
+  if (!roomId || !playerId) {
+    return new Response('Bad Request', { status: 400 });
+  }
+
+  // update the host's room_id and add the player to the room only and if only userId belongs to a host in its room
+  const verfiedHost = await db.execute(sql`
+    SELECT 1 FROM users WHERE id=${userId} AND is_host=true AND room_id=${roomId};
+  `);
+  if (verfiedHost.rowCount === 0) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const result = await db.execute(sql`
+    UPDATE users
+    SET room_id=NULL
+    WHERE id=${playerId} AND room_id=${roomId}
     RETURNING *;
   `);
 
