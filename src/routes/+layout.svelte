@@ -1,6 +1,7 @@
 <script>
   import { ModeWatcher } from 'mode-watcher';
   import Navbar from '$lib/components/layout/navbar.svelte';
+  import { Toaster } from '$lib/components/ui/sonner';
   import '../app.css';
 </script>
 
@@ -17,3 +18,4 @@
     footer
   </footer> -->
 </div>
+<Toaster />

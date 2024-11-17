@@ -1,3 +1,4 @@
+import { PUBLIC_BASE_URL } from '$env/static/public';
 import type { UserClient } from '$lib/store/game.svelte';
 
 export abstract class WebRTCConnection {
@@ -33,7 +34,11 @@ export abstract class WebRTCConnection {
    * @param userId The user ID of the user
    */
   public async updateUserInfoChange(name: string, color: string, userId: string) {
-    const updatedUserRes = await fetch('/api/user', {
+    return WebRTCConnection.sendUserInfoChange(name, color, userId);
+  }
+
+  public static async sendUserInfoChange(name: string, color: string, userId: string) {
+    const updatedUserRes = await fetch(`${PUBLIC_BASE_URL}/api/user`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, color, userId }),

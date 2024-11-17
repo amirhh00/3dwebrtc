@@ -1,3 +1,4 @@
+import { PUBLIC_BASE_URL } from '$env/static/public';
 import type { RoomState } from '$lib/@types/user.type';
 import { gameState } from '$lib/store/game.svelte';
 import type { RTCMessage } from '../@types/Rtc.type';
@@ -100,7 +101,7 @@ export class PlayerConnection extends WebRTCConnection {
   }
 
   protected async handleIceCandidate() {
-    const response = await fetch(`/api/game/rooms`, {
+    const response = await fetch(`${PUBLIC_BASE_URL}/api/game/rooms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

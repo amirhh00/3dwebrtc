@@ -1,9 +1,16 @@
-import type { users } from '$lib/server/db/schema';
 export type WebRTCData = {
   sdp: string; // SDP offer/answer for WebRTC
 };
 
-export type UserServer = typeof users.$inferSelect;
+export type UserServer = {
+  id: string;
+  name: string;
+  color: string;
+  is_host: boolean;
+  room_id: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export type UserDetails = Partial<UserServer>;
 

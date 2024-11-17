@@ -1,36 +1,53 @@
-import type { RoomState } from '$lib/@types/user.type';
+import type { RoomState, UserServer } from '$lib/@types/user.type';
 import { availableRooms, gameState } from '$lib/store/game.svelte';
 import { HostConnection } from './HostWebRTC.connection';
 import { PlayerConnection } from './PlayerWebRTC.connection';
+import { PUBLIC_BASE_URL } from '$env/static/public';
+import { dev } from '$app/environment';
+import { WebRTCConnection } from './WebRTC.connection';
+import { toast } from 'svelte-sonner';
 
 class GameConnectionHandler {
-  private conn: EventSource | null = null;
+  private conn: WebSocket | null = null;
   public isHost = false;
   public webrtc: HostConnection | PlayerConnection | null = null;
 
   async createRoom() {
     return new Promise<void>((resolve) => {
-      this.conn = new EventSource('/api/game/host', { withCredentials: true });
-      this.conn.onerror = (e) => {
-        console.error('connection error', e);
-        throw new Error('connection error');
+      const url = new URL(`${PUBLIC_BASE_URL}/api/game/host`);
+      // change protocol to ws
+      url.protocol = dev ? 'ws:' : 'wss:';
+      this.conn = new WebSocket(url.toString());
+      this.conn.onopen = () => {
+        this.conn?.send(JSON.stringify({ type: 'roomState' }));
       };
       this.conn.onmessage = (e) => {
-        const roomState = JSON.parse(e.data) as RoomState;
-        gameState.room.roomId = roomState.id;
-        gameState.room.players = roomState.users;
-        gameState.room.messages = roomState.messages;
-        gameState.isPaused = false;
-        gameState.isRoomConnecting = false;
-        this.webrtc = new HostConnection(gameState.userId!, roomState.id);
-        this.addListeners();
-        resolve();
+        const data = JSON.parse(e.data);
+        if (data.type === 'roomState') {
+          const content = data.content as RoomState;
+          gameState.room.roomId = content.id;
+          gameState.room.players = content.users;
+          gameState.room.messages = content.messages;
+          gameState.isPaused = false;
+          gameState.isRoomConnecting = false;
+          this.webrtc = new HostConnection(gameState.userId!, content.id);
+          resolve();
+        } else if (data.type === 'newUser') {
+          type NewUserContent = RoomState & { newUser: UserServer & { sdp: string } };
+          const content = data.content as NewUserContent;
+          console.log('new user', data);
+          const offer = JSON.parse(content.newUser.sdp);
+          (this.webrtc as HostConnection).handleNewPlayer(content.newUser.id, offer);
+        }
       };
     });
   }
 
   async seekRooms() {
-    const response = await fetch('/api/game/rooms', { method: 'GET', credentials: 'include' });
+    const response = await fetch(`${PUBLIC_BASE_URL}/api/game/rooms`, {
+      method: 'GET',
+      credentials: 'include'
+    });
     const rooms = await response.json();
     availableRooms.rooms = rooms;
   }
@@ -51,20 +68,21 @@ class GameConnectionHandler {
     // gameState.isPaused = false;
   }
 
-  changeUserDetails(name: string, color: string, userId: string) {
-    this.webrtc?.updateUserInfoChange(name, color, userId);
+  async changeUserDetails(name: string, color: string, userId: string) {
+    try {
+      if (this.webrtc) {
+        await this.webrtc.updateUserInfoChange(name, color, userId);
+      } else {
+        await WebRTCConnection.sendUserInfoChange(name, color, userId);
+      }
+      toast.success('User info updated successfully');
+    } catch (error) {
+      console.error('Error updating user info', error);
+    }
   }
 
   disconnect() {
     this.conn?.close();
-  }
-
-  private addListeners() {
-    this.conn?.addEventListener('newUser', (e) => {
-      const hostRTC = this.webrtc as HostConnection;
-      const data = JSON.parse(e.data);
-      hostRTC.handleNewPlayer(data.newUser.id, JSON.parse(data.newUser.sdp));
-    });
   }
 }
 

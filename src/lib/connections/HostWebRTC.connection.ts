@@ -1,6 +1,7 @@
 import { gameState, type UserClient } from '$lib/store/game.svelte';
 import type { RTCMessage } from '$lib/@types/Rtc.type';
 import { WebRTCConnection } from './WebRTC.connection';
+import { PUBLIC_BASE_URL } from '$env/static/public';
 
 // class PlayersPeer {
 //   playerId: string;
@@ -60,13 +61,14 @@ export class HostConnection extends WebRTCConnection {
     peerConnection.onicecandidate = async (event) => {
       if (event.candidate && !isIceCandidateHandled) {
         isIceCandidateHandled = true;
-        const sdp = JSON.stringify(peerConnection.localDescription);
+        const sdp = peerConnection.localDescription?.toJSON();
         const body = JSON.stringify({
           sdp,
           playerId
         });
-        fetch('/api/game/host', {
+        fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body
         });
@@ -86,7 +88,7 @@ export class HostConnection extends WebRTCConnection {
   private addEventListenersToNewPeer(dataChannel: RTCDataChannel, playerId: string) {
     dataChannel.onopen = async () => {
       this.hasDataChannel = true;
-      const newAddedUserToDbRes = await fetch('/api/game/host', {
+      const newAddedUserToDbRes = await fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -150,7 +152,7 @@ export class HostConnection extends WebRTCConnection {
   }
 
   private async handleRemovePlayer(playerId: string) {
-    const disconnectedUserRes = await fetch('/api/game/host', {
+    const disconnectedUserRes = await fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

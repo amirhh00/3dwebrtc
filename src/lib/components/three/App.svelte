@@ -7,9 +7,10 @@
   import ChatBox from '$lib/components/ChatBox.svelte';
   import { onMount } from 'svelte';
   import { gameSettings, gameState } from '$lib/store/game.svelte';
+  import type { UserServer } from '$lib/@types/user.type';
 
   interface MainMenuProps {
-    user: (typeof import('$lib/server/db/schema').users)['$inferSelect'];
+    user: UserServer;
   }
 
   const { user }: MainMenuProps = $props();
