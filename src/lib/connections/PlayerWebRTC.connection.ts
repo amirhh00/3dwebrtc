@@ -4,13 +4,8 @@ import { gameState } from '$lib/store/game.svelte';
 import type { RTCMessage } from '../@types/Rtc.type';
 import { WebRTCConnection } from './WebRTC.connection';
 
-interface customWindow extends Window {
-  client?: PlayerConnection;
-}
-
-declare const window: customWindow;
-
 export class PlayerConnection extends WebRTCConnection {
+  /** host peer connection */
   private peerConnection: RTCPeerConnection;
   private playerSdp: string | null = null;
   private isIceCandidateHandled = false;
@@ -28,7 +23,7 @@ export class PlayerConnection extends WebRTCConnection {
         }
       ]
     });
-
+    this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
         this.playerSdp = JSON.stringify(this.peerConnection.localDescription);
@@ -41,6 +36,24 @@ export class PlayerConnection extends WebRTCConnection {
         }, 1000);
       }
     };
+    this.peerConnection.ontrack = (event) => {
+      console.log('received track from host', event);
+      // this.mediaStream = new MediaStream();
+      // this.mediaStream.addTrack(event.track);
+    };
+
+    this.peerConnection.onnegotiationneeded = async (event) => {
+      console.log('negotiation needed', event, this);
+      // create offer when negotiation is needed and send it to the host using signalling channel
+      // await this.setupConnection();
+      // this.peerConnection.channel?.send(
+      //   JSON.stringify({
+      //     type: 'video-offer',
+      //     sdp: this.playerSdp
+      //   })
+      // );
+    };
+
     this.setupConnection();
   }
 
@@ -125,9 +138,15 @@ export class PlayerConnection extends WebRTCConnection {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public sendMessage(message: string): void {
-    throw new Error('Method not implemented.');
+    this.peerConnection.channel?.send(
+      JSON.stringify({
+        event: 'chatMessage',
+        message,
+        from: gameState.userId,
+        time: new Date().getTime()
+      } satisfies RTCMessage)
+    );
   }
 
   public sendPositionUpdate(x: number, y: number, z: number): void {
@@ -153,5 +172,20 @@ export class PlayerConnection extends WebRTCConnection {
       } satisfies RTCMessage)
     );
     return updatedUser;
+  }
+  /**
+   * non host player should send their track to the host
+   */
+  public handleMyMediaStream(stream: MediaStream): void {
+    console.log('sending track to host', stream);
+    const audioTrack = stream.getAudioTracks()[0];
+    audioTrack.enabled = true;
+    this.mediaStream = stream;
+    // don't add new track, just replace the existing track
+    this.peerConnection.getSenders().forEach((sender) => {
+      console.log('replacing track in peer connection', sender);
+      sender.replaceTrack(audioTrack);
+      
+    });
   }
 }

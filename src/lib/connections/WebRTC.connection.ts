@@ -1,16 +1,21 @@
 import { PUBLIC_BASE_URL } from '$env/static/public';
-import type { UserClient } from '$lib/store/game.svelte';
+import { type UserClient } from '$lib/store/game.svelte';
 
 export abstract class WebRTCConnection {
+  private readonly MAX_PLAYERS = 10;
   protected role: 'host' | 'player';
   protected userId: string;
   protected roomId: string;
   public hasDataChannel = false;
+  public mediaStream: MediaStream | null = null;
 
   constructor(role: 'host' | 'player', userId: string, roomId: string) {
     this.role = role;
     this.userId = userId;
     this.roomId = roomId;
+    // micState.subscribe((value) => {
+    //   this.handleMicToggle(value);
+    // });
   }
 
   /**
@@ -27,6 +32,8 @@ export abstract class WebRTCConnection {
    */
   public abstract sendMessage(message: string): void;
 
+  public abstract handleMyMediaStream(stream: MediaStream): void;
+
   /**
    * Update the user info in the database and send the updated user info to the other peer(s)
    * @param name The updated name of the user
@@ -37,6 +44,9 @@ export abstract class WebRTCConnection {
     return WebRTCConnection.sendUserInfoChange(name, color, userId);
   }
 
+  /**
+   * Update the user info in the database if the user has not connected to a room yet
+   */
   public static async sendUserInfoChange(name: string, color: string, userId: string) {
     const updatedUserRes = await fetch(`${PUBLIC_BASE_URL}/api/user`, {
       method: 'PUT',
@@ -47,4 +57,16 @@ export abstract class WebRTCConnection {
     const updatedUser: UserClient = await updatedUserRes.json();
     return updatedUser;
   }
+  /**
+   * handle mic mute/unmute
+   */
+  // private async handleMicToggle(mic: boolean, userId?: string) {
+  //   return WebRTCConnection.handleMicToggle(mic, userId || this.userId);
+  // }
+  /**
+   * handle mic mute/unmute if the user has not connected to a room yet
+   */
+  // public static async handleMicToggle(mic: boolean, userId: string) {
+
+  // }
 }

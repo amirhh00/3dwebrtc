@@ -10,12 +10,12 @@ import { toast } from 'svelte-sonner';
 class GameConnectionHandler {
   private conn: WebSocket | null = null;
   public isHost = false;
+  private _mediaStream: MediaStream | null = null;
   public webrtc: HostConnection | PlayerConnection | null = null;
 
   async createRoom() {
     return new Promise<void>((resolve) => {
       const url = new URL(`${PUBLIC_BASE_URL}/api/game/host`);
-      // change protocol to ws
       url.protocol = dev ? 'ws:' : 'wss:';
       this.conn = new WebSocket(url.toString());
       this.conn.onopen = () => {
@@ -30,13 +30,14 @@ class GameConnectionHandler {
           gameState.room.messages = content.messages;
           gameState.isPaused = false;
           gameState.isRoomConnecting = false;
+          // should pass this_mediaStream as a constructor
           this.webrtc = new HostConnection(gameState.userId!, content.id);
           resolve();
         } else if (data.type === 'newUser') {
           type NewUserContent = RoomState & { newUser: UserServer & { sdp: string } };
           const content = data.content as NewUserContent;
-          console.log('new user', data);
           const offer = JSON.parse(content.newUser.sdp);
+          // should pass this_mediaStream as a constructor
           (this.webrtc as HostConnection).handleNewPlayer(content.newUser.id, offer);
         }
       };
@@ -54,18 +55,6 @@ class GameConnectionHandler {
 
   async joinRoom(roomId: string) {
     this.webrtc = new PlayerConnection(gameState.userId!, roomId);
-    // const s = this.conn;
-    // if (!s || !this.webrtc) return;
-    // const selectedRoom = await s.emitWithAck("selectRoom", roomId);
-    // await this.webrtc.joinRemoteConnection(selectedRoom);
-    // const joinedRoom = await s.emitWithAck("joinRoom", roomId, {
-    //   sdp: this.webrtc.sdp,
-    // }, gameSettings);
-    // gameState.room.players = joinedRoom.users;
-    // gameState.room.messages = joinedRoom.messages;
-    // gameState.room.roomId = roomId;
-    // gameState.isRoomConnecting = false;
-    // gameState.isPaused = false;
   }
 
   async changeUserDetails(name: string, color: string, userId: string) {
@@ -79,6 +68,25 @@ class GameConnectionHandler {
     } catch (error) {
       console.error('Error updating user info', error);
     }
+  }
+
+  async handleMicToggle(mic: boolean) {
+    if (mic) {
+      this._mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.webrtc?.handleMyMediaStream(this._mediaStream);
+    } else {
+      this._mediaStream?.getTracks().forEach((track) => {
+        track.stop();
+      });
+      this._mediaStream = null;
+      if (this.webrtc) this.webrtc.mediaStream = null;
+    }
+    gameState.room.players = gameState.room.players?.map((player) => {
+      if (player.id === gameState.userId) {
+        player.mic = mic;
+      }
+      return player;
+    });
   }
 
   disconnect() {

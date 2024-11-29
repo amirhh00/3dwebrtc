@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { gameSettings, gameState, availableRooms } from '$lib/store/game.svelte';
+  import { playerInfo, gameState, availableRooms, micState } from '$lib/store/game.svelte';
   import { fade } from 'svelte/transition';
   import { cn } from '$lib/utils';
   import { Button } from '$lib/components/ui/button';
   import { browser } from '$app/environment';
   import { gameConnection as conn } from '$lib/connections/Game.connection';
   import type { UserDetails } from '$lib/@types/user.type';
+  import { MicIcon, MicOff } from 'lucide-svelte';
 
   // svelte-ignore non_reactive_update
   let isFirstRender = true;
@@ -21,6 +22,10 @@
 
   function onKeyDown(e: KeyboardEvent) {
     switch (e.key) {
+      case 'm':
+        $micState = !$micState;
+        conn.handleMicToggle($micState);
+        break;
       case 'Escape':
         if (!isFirstRender) {
           currentMainMenuScreen = 'Main Menu';
@@ -36,10 +41,10 @@
     currentMainMenuScreen = 'Host Game';
     gameState.isRoomConnecting = true;
     let userDetails: UserDetails | undefined = undefined;
-    if (!!gameSettings.playerName || !!gameSettings.playerColor) {
+    if (!!playerInfo.playerName || !!playerInfo.playerColor) {
       userDetails = {
-        name: gameSettings.playerName,
-        color: gameSettings.playerColor
+        name: playerInfo.playerName,
+        color: playerInfo.playerColor
       };
     }
     await conn.createRoom();
@@ -61,15 +66,14 @@
     const form = e.target as HTMLFormElement;
     const formData = new FormData(form);
     const uname = formData.get('username') as string;
-    const mic = formData.get('mic') === 'on';
-    const muted = formData.get('muted') === 'on';
     const playerColor = formData.get('playerColor') as string;
-    gameSettings.mic = mic;
-    gameSettings.mute = muted;
-    gameSettings.playerName = uname;
-    gameSettings.playerColor = playerColor;
+    playerInfo.playerName = uname;
+    playerInfo.playerColor = playerColor;
     conn.changeUserDetails(uname, playerColor, gameState.userId);
   }
+  // $effect(() => {
+  //   $inspect(gameState);
+  // });
 </script>
 
 <svelte:window on:keydown={onKeyDown} />
@@ -80,12 +84,17 @@
     <p class="text-xs opacity-50 ml-px">Lobby</p>
     <ul class="list-none pl-0">
       {#each gameState.room.players as user, i}
-        {@const uname = !!user.name ? user.name.charAt(0) : i}
+        {@const shortenedUserName = !!user.name ? user.name.charAt(0) : i}
         <li
-          title={uname?.toString()}
-          class="text-sm uppercase w-8 h-8 bg-background rounded-full opacity-50 flex items-center justify-center p-1 mt-2"
+          title={user.name?.toString()}
+          class="text-sm relative uppercase w-8 h-8 bg-background rounded-full opacity-50 flex items-center justify-center p-1 mt-2"
         >
-          {uname}
+          {shortenedUserName}
+          {#if user.mic}
+            <MicIcon class="w-3 h-3 right-0 -bottom-1 absolute" />
+          {:else}
+            <MicOff class="w-3 h-3 right-0 -bottom-1 absolute" />
+          {/if}
         </li>
       {/each}
     </ul>
@@ -145,22 +154,30 @@
             <br />
             {gameState?.room?.roomId ? 'roomId: ' + gameState.room.roomId : 'no room id found'}
           </p>
+          <div class="">
+            <label class="flex w-full cursor-pointer justify-between items-center mb-3">
+              Enable microphone
+              <input
+                checked={$micState}
+                onchange={(e) => {
+                  // playerInfo.mic = e.currentTarget.checked;
+                  const mic = e.currentTarget.checked;
+                  $micState = mic;
+                  conn.handleMicToggle(mic);
+                  // if (!conn.webrtc) {
+                  //   WebRTCConnection.handleMicToggle(e.currentTarget.checked, gameState.userId);
+                  // }
+                }}
+                name="mic"
+                class="float-end"
+                type="checkbox"
+              />
+            </label>
+          </div>
           <form
             onsubmit={handleSettingChange}
             class="flex flex-col w-full text-left gap-4 prose dark:prose-invert"
           >
-            <div class="">
-              <label class="flex w-full justify-between items-center">
-                Enable microphone
-                <input checked={gameSettings.mic} name="mic" class="float-end" type="checkbox" />
-              </label>
-            </div>
-            <div class="">
-              <label class="flex w-full justify-between items-center">
-                Mute Sound
-                <input checked={gameSettings.mute} name="muted" class="float-end" type="checkbox" />
-              </label>
-            </div>
             <div class="">
               <label class="flex w-full justify-between items-center">
                 Player name:
@@ -168,7 +185,7 @@
                   class="float-end ml-4 p-1 text-current"
                   placeholder="Your name"
                   name="username"
-                  value={gameSettings.playerName}
+                  value={playerInfo.playerName}
                 />
               </label>
             </div>
@@ -176,9 +193,9 @@
               <label class="flex w-full justify-between items-center">
                 Player color:
                 <input
-                  value={gameSettings.playerColor}
+                  value={playerInfo.playerColor}
                   name="playerColor"
-                  class="float-end"
+                  class="float-end cursor-pointer"
                   type="color"
                 />
               </label>

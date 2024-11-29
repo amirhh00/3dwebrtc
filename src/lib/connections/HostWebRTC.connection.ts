@@ -3,36 +3,10 @@ import type { RTCMessage } from '$lib/@types/Rtc.type';
 import { WebRTCConnection } from './WebRTC.connection';
 import { PUBLIC_BASE_URL } from '$env/static/public';
 
-// class PlayersPeer {
-//   playerId: string;
-//   peerConnection: RTCPeerConnection;
-//   channel: RTCDataChannel;
-
-//   constructor(playerId: string, peerConnection: RTCPeerConnection, channel: RTCDataChannel) {
-//     this.playerId = playerId;
-//     this.peerConnection = peerConnection;
-//     this.channel = channel;
-//   }
-
-//   public addEventListeners() {
-//     this.peerConnection.ondatachannel = (event) => {
-//       const dataChannel = event.channel;
-//       this.channel = dataChannel;
-//       this.addChannelEventListeners();
-//     };
-//   }
-// }
-
-interface customWindow extends Window {
-  host?: HostConnection;
-}
-
-declare const window: customWindow;
-
 export class HostConnection extends WebRTCConnection {
   // private players: PlayersPeer[] = [];
   private players = new Map<string, RTCPeerConnection>();
-
+  private mediaStreams = new Map<string, MediaStream>();
   constructor(playerId: string, roomId: string) {
     super('host', playerId, roomId);
     window.host = this;
@@ -57,6 +31,7 @@ export class HostConnection extends WebRTCConnection {
         }
       ]
     });
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
     let isIceCandidateHandled = false;
     peerConnection.onicecandidate = async (event) => {
       if (event.candidate && !isIceCandidateHandled) {
@@ -80,6 +55,31 @@ export class HostConnection extends WebRTCConnection {
       peerConnection.channel = dataChannel;
       this.addEventListenersToNewPeer(dataChannel, playerId);
     };
+
+    peerConnection.ontrack = async (event) => {
+      console.log('Host: Received track from player', event, playerId, gameState.room.players);
+      const mediaStream = new MediaStream();
+      mediaStream.addTrack(event.track);
+      // wait to make sure the user has been added to the roomState
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const user = gameState.room.players?.find((player) => player.id === playerId);
+      if (user) {
+        user.stream = mediaStream;
+        user.mic = true;
+        console.log('Host: Added stream to player', user);
+      }
+      this.mediaStreams.set(playerId, mediaStream);
+      // const audio = document.createElement('audio');
+      // audio.id = playerId;
+      // audio.srcObject = mediaStream;
+      // document.body.appendChild(audio);
+      // audio.play();
+    };
+
+    peerConnection.onnegotiationneeded = async (event) => {
+      console.log('Host: negotiation needed', event);
+    }
+
     // this.players.push(new PlayersPeer(playerId, peerConnection, peerConnection.createDataChannel('host-data')));
     this.players.set(playerId, peerConnection);
     return peerConnection;
@@ -98,6 +98,11 @@ export class HostConnection extends WebRTCConnection {
         })
       });
       const newAddedUserToDb: UserClient = await newAddedUserToDbRes.json();
+      if (this.mediaStreams.has(playerId)) {
+        console.log('user has already opened an audio track, so replacing now.. ', playerId);
+        newAddedUserToDb.stream = this.mediaStreams.get(playerId);
+        newAddedUserToDb.mic = true;
+      }
       gameState.room.players?.push(newAddedUserToDb);
       // send room state to all players
       this.broadcastToPlayers({
@@ -203,5 +208,20 @@ export class HostConnection extends WebRTCConnection {
       time: new Date().getTime()
     });
     return updatedUser;
+  }
+
+  /**
+   * host should just add their media stream to all players tracks
+   */
+  public handleMyMediaStream(stream: MediaStream): void {
+    this.players.forEach((peerConnection) => {
+      const audioSender = peerConnection
+        .getSenders()
+        .find((sender) => sender.track?.kind === 'audio');
+      if (audioSender) {
+        console.log('replacing track in peer connection', stream);
+        audioSender.replaceTrack(stream.getAudioTracks()[0]);
+      }
+    });
   }
 }

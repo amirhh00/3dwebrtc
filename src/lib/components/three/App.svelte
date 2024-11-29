@@ -6,7 +6,7 @@
   import { browser, dev } from '$app/environment';
   import ChatBox from '$lib/components/ChatBox.svelte';
   import { onMount } from 'svelte';
-  import { gameSettings, gameState } from '$lib/store/game.svelte';
+  import { playerInfo, gameState } from '$lib/store/game.svelte';
   import type { UserServer } from '$lib/@types/user.type';
 
   interface MainMenuProps {
@@ -17,8 +17,8 @@
 
   onMount(() => {
     if (browser) {
-      gameSettings.playerName = user.name;
-      gameSettings.playerColor = user.color || '#000000';
+      playerInfo.playerName = user.name;
+      playerInfo.playerColor = user.color || '#000000';
       gameState.userId = user.id;
     }
   });

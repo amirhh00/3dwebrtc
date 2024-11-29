@@ -24,6 +24,11 @@ interface RoomStateChanged extends CommunicationEventBasse {
   time: number;
 }
 
+interface ChatMessage extends CommunicationEventBasse {
+  message: string;
+  time: number;
+}
+
 export type RTCMessage<T = CommunicationEventBasse['event']> = T extends 'positionUpdate'
   ? positionUpdate
-  : RoomStateChanged;
+  : RoomStateChanged | ChatMessage;

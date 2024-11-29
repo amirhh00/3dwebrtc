@@ -4,10 +4,11 @@
   import { RigidBody, CollisionGroups, Collider } from '@threlte/rapier';
   import ThirdPersonControls from './ThirdPersonControls.svelte';
   import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
-  import type { Group } from 'three';
-  import { gameSettings, gameState } from '$lib/store/game.svelte';
+  import type { Group, Mesh } from 'three';
+  import { playerInfo, gameState } from '$lib/store/game.svelte';
   import { gameConnection } from '$lib/connections/Game.connection';
   import PlayerModel from './PlayerModel.svelte';
+  import { PositionalAudio, AudioListener } from '@threlte/extras';
   // import { onMount } from 'svelte';
   // import PointerLockControls from './PointerLockControls.svelte';
 
@@ -21,6 +22,7 @@
 
   let position = $state<[number, number, number]>([Math.random() * 10, 3, Math.random() * 5]);
   let capsule = $state<Group>();
+  let audioListener = $state<AudioListener>();
 
   let rigidBody = $state<RapierRigidBody>();
 
@@ -127,12 +129,13 @@
 
 <svelte:window on:keydown={onKeyDown} on:keyup={onKeyUp} />
 
-{#if capsule}
-  <T.PerspectiveCamera makeDefault fov={90}>
+<T.PerspectiveCamera makeDefault fov={90}>
+  {#if capsule}
     <ThirdPersonControls bind:object={capsule} />
-    <!-- <PointerLockControls bind:lock /> -->
-  </T.PerspectiveCamera>
-{/if}
+  {/if}
+  <AudioListener id="al" />
+  <!-- <PointerLockControls bind:lock /> -->
+</T.PerspectiveCamera>
 
 <T.Group bind:ref={capsule} {position}>
   <RigidBody bind:rigidBody enabledRotations={[false, false, false]}>
@@ -140,8 +143,8 @@
       <Collider shape={'capsule'} args={[height / 2, radius]} />
       <PlayerModel
         playerId={gameState.userId}
-        playerName={gameSettings.playerName}
-        playerColor={gameSettings.playerColor}
+        playerName={playerInfo.playerName}
+        playerColor={playerInfo.playerColor}
         meshProps={{ position: [0, 0, 0] }}
         {height}
         {radius}
