@@ -78,22 +78,22 @@
 
 <svelte:window on:keydown={onKeyDown} />
 
-<div class="absolute top-2 left-2 z-50">
+<div class="absolute left-2 top-2 z-50">
   {#if gameState?.room?.roomId && gameState.room?.players}
     <!-- show current users in the room on top left of the screen -->
-    <p class="text-xs opacity-50 ml-px">Lobby</p>
+    <p class="ml-px text-xs opacity-50">Lobby</p>
     <ul class="list-none pl-0">
       {#each gameState.room.players as user, i}
         {@const shortenedUserName = !!user.name ? user.name.charAt(0) : i}
         <li
           title={user.name?.toString()}
-          class="text-sm relative uppercase w-8 h-8 bg-background rounded-full opacity-50 flex items-center justify-center p-1 mt-2"
+          class="relative mt-2 flex h-8 w-8 items-center justify-center rounded-full bg-background p-1 text-sm uppercase opacity-50"
         >
           {shortenedUserName}
           {#if user.mic}
-            <MicIcon class="w-3 h-3 right-0 -bottom-1 absolute" />
+            <MicIcon class="absolute -bottom-1 right-0 h-3 w-3" />
           {:else}
-            <MicOff class="w-3 h-3 right-0 -bottom-1 absolute" />
+            <MicOff class="absolute -bottom-1 right-0 h-3 w-3" />
           {/if}
         </li>
       {/each}
@@ -105,13 +105,13 @@
   <div
     transition:fade={{ delay: 100, duration: 300 }}
     class={cn(
-      'absolute flex justify-center items-center w-full h-full top-0 left-0 bg-background z-10',
+      'absolute left-0 top-0 z-10 flex h-full w-full items-center justify-center bg-background',
       isFirstRender ? 'opacity-100' : 'opacity-80'
     )}
   >
-    <div class="prose dark:prose-invert text-center">
+    <div class="prose text-center dark:prose-invert">
       <h2>{currentMainMenuScreen}</h2>
-      <ul class="list-none pl-0 hover:[&>li]:underline transition duration-500">
+      <ul class="list-none pl-0 transition duration-500 hover:[&>li]:underline">
         <!-- Main Menu Screen -->
         {#if currentMainMenuScreen === 'Main Menu'}
           <li>
@@ -149,13 +149,13 @@
           {/if}
           <!-- Settings Screen -->
         {:else if currentMainMenuScreen === 'Settings' && browser}
-          <p class="text-center text-xs opacity-60 mb-0 -mt-4">
+          <p class="-mt-4 mb-0 text-center text-xs opacity-60">
             {gameState.userId ? 'userId: ' + gameState.userId : ''}
             <br />
             {gameState?.room?.roomId ? 'roomId: ' + gameState.room.roomId : 'no room id found'}
           </p>
           <div class="">
-            <label class="flex w-full cursor-pointer justify-between items-center mb-3">
+            <label class="mb-3 flex w-full cursor-pointer items-center justify-between">
               Enable microphone
               <input
                 checked={$micState}
@@ -176,10 +176,10 @@
           </div>
           <form
             onsubmit={handleSettingChange}
-            class="flex flex-col w-full text-left gap-4 prose dark:prose-invert"
+            class="prose flex w-full flex-col gap-4 text-left dark:prose-invert"
           >
             <div class="">
-              <label class="flex w-full justify-between items-center">
+              <label class="flex w-full items-center justify-between">
                 Player name:
                 <input
                   class="float-end ml-4 p-1 text-current"
@@ -190,7 +190,7 @@
               </label>
             </div>
             <div class="">
-              <label class="flex w-full justify-between items-center">
+              <label class="flex w-full items-center justify-between">
                 Player color:
                 <input
                   value={playerInfo.playerColor}

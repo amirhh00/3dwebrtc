@@ -15,7 +15,7 @@
   });
 </script>
 
-<div class="relative w-full h-full">
+<div class="relative h-full w-full">
   {#if user}
     <Game {user} />
   {:else}

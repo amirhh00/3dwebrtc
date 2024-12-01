@@ -185,7 +185,6 @@ export class PlayerConnection extends WebRTCConnection {
     this.peerConnection.getSenders().forEach((sender) => {
       console.log('replacing track in peer connection', sender);
       sender.replaceTrack(audioTrack);
-      
     });
   }
 }

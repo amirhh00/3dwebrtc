@@ -78,7 +78,7 @@ export class HostConnection extends WebRTCConnection {
 
     peerConnection.onnegotiationneeded = async (event) => {
       console.log('Host: negotiation needed', event);
-    }
+    };
 
     // this.players.push(new PlayersPeer(playerId, peerConnection, peerConnection.createDataChannel('host-data')));
     this.players.set(playerId, peerConnection);

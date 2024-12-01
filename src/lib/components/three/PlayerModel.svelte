@@ -2,11 +2,7 @@
   import { T, useTask, useThrelte } from '@threlte/core';
   import { HTML, PositionalAudio } from '@threlte/extras';
   import type { PlayerModelProps } from '$lib/@types/3D.type';
-  import {
-    type Group,
-    type Mesh,
-    type PositionalAudio as threePositionalAudio
-  } from 'three';
+  import { type Group, type Mesh, type PositionalAudio as threePositionalAudio } from 'three';
   import { gameState } from '$lib/store/game.svelte';
   import { onDestroy } from 'svelte';
 
@@ -31,13 +27,13 @@
     }
   });
 
-    $effect(() => {
+  $effect(() => {
     if (pAudio) {
       window.pa = pAudio;
       pAudio.stop();
       pAudio.play();
     }
-    });
+  });
 
   onDestroy(() => {
     if (pAudio) {

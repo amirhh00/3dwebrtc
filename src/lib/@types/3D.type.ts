@@ -1,5 +1,5 @@
-import type { Props } from "@threlte/core";
-import type { Mesh } from "three";
+import type { Props } from '@threlte/core';
+import type { Mesh } from 'three';
 
 export type PlayerModelProps = {
   playerColor?: string;
