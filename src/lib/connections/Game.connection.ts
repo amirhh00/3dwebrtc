@@ -79,7 +79,6 @@ class GameConnectionHandler {
         track.stop();
       });
       this._mediaStream = null;
-      if (this.webrtc) this.webrtc.mediaStream = null;
     }
     gameState.room.players = gameState.room.players?.map((player) => {
       if (player.id === gameState.userId) {

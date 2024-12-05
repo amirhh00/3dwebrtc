@@ -30,15 +30,14 @@
   $effect(() => {
     if (pAudio) {
       window.pa = pAudio;
-      pAudio.stop();
-      pAudio.play();
+      // pAudio.stop();
+      // pAudio.play();
     }
   });
 
   onDestroy(() => {
     if (pAudio) {
       window.pa = undefined;
-      pAudio.clear();
     }
   });
 </script>
@@ -57,7 +56,6 @@
   {#if playerId !== gameState.userId && user?.mic && user.stream}
     <PositionalAudio
       id="al"
-      autoplay={false}
       bind:ref={pAudio}
       refDistance={10}
       volume={1}

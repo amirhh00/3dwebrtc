@@ -9,7 +9,13 @@ export type RTCData = {
 
 interface CommunicationEventBasse {
   from: string;
-  event: 'userLeft' | 'userJoined' | 'userInfoChange' | 'chatMessage' | 'positionUpdate';
+  event:
+    | 'userLeft'
+    | 'userJoined'
+    | 'userInfoChange'
+    | 'chatMessage'
+    | 'positionUpdate'
+    | 'micToggle';
 }
 
 interface positionUpdate extends CommunicationEventBasse {
@@ -29,6 +35,13 @@ interface ChatMessage extends CommunicationEventBasse {
   time: number;
 }
 
+interface MicToggle extends CommunicationEventBasse {
+  mic?: boolean;
+  time: number;
+}
+
 export type RTCMessage<T = CommunicationEventBasse['event']> = T extends 'positionUpdate'
   ? positionUpdate
-  : RoomStateChanged | ChatMessage;
+  : T extends 'micToggle'
+    ? MicToggle
+    : RoomStateChanged | ChatMessage;

@@ -1,6 +1,6 @@
 import { PUBLIC_BASE_URL } from '$env/static/public';
 import type { RoomState } from '$lib/@types/user.type';
-import { gameState } from '$lib/store/game.svelte';
+import { gameState, micState } from '$lib/store/game.svelte';
 import type { RTCMessage } from '../@types/Rtc.type';
 import { WebRTCConnection } from './WebRTC.connection';
 
@@ -23,7 +23,8 @@ export class PlayerConnection extends WebRTCConnection {
         }
       ]
     });
-    this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    this.peerConnection.addTransceiver('audio', { direction: 'sendonly' });
+    this.peerConnection.addTransceiver('audio', { direction: 'recvonly' });
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
         this.playerSdp = JSON.stringify(this.peerConnection.localDescription);
@@ -38,8 +39,6 @@ export class PlayerConnection extends WebRTCConnection {
     };
     this.peerConnection.ontrack = (event) => {
       console.log('received track from host', event);
-      // this.mediaStream = new MediaStream();
-      // this.mediaStream.addTrack(event.track);
     };
 
     this.peerConnection.onnegotiationneeded = async (event) => {
@@ -55,6 +54,24 @@ export class PlayerConnection extends WebRTCConnection {
     };
 
     this.setupConnection();
+    micState.subscribe((value) => {
+      this.handleMicToggle(value);
+    });
+  }
+
+  private handleMicToggle(mic: boolean) {
+    // if is connected to a room
+    if (this.peerConnection.connectionState === 'connected' && gameState.room.roomId) {
+      // send mic state to the host via data channel
+      this.peerConnection.channel?.send(
+        JSON.stringify({
+          event: 'micToggle',
+          mic,
+          from: gameState.userId,
+          time: new Date().getTime()
+        } satisfies RTCMessage)
+      );
+    }
   }
 
   private async setupConnection() {
@@ -177,10 +194,8 @@ export class PlayerConnection extends WebRTCConnection {
    * non host player should send their track to the host
    */
   public handleMyMediaStream(stream: MediaStream): void {
-    console.log('sending track to host', stream);
     const audioTrack = stream.getAudioTracks()[0];
     audioTrack.enabled = true;
-    this.mediaStream = stream;
     // don't add new track, just replace the existing track
     this.peerConnection.getSenders().forEach((sender) => {
       console.log('replacing track in peer connection', sender);

@@ -8,9 +8,7 @@
   import { playerInfo, gameState } from '$lib/store/game.svelte';
   import { gameConnection } from '$lib/connections/Game.connection';
   import PlayerModel from './PlayerModel.svelte';
-  import { PositionalAudio, AudioListener } from '@threlte/extras';
-  // import { onMount } from 'svelte';
-  // import PointerLockControls from './PointerLockControls.svelte';
+  import { AudioListener } from '@threlte/extras';
 
   type PlayerProps = {
     radius?: number;

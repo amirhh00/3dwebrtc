@@ -4,9 +4,7 @@ import { WebRTCConnection } from './WebRTC.connection';
 import { PUBLIC_BASE_URL } from '$env/static/public';
 
 export class HostConnection extends WebRTCConnection {
-  // private players: PlayersPeer[] = [];
   private players = new Map<string, RTCPeerConnection>();
-  private mediaStreams = new Map<string, MediaStream>();
   constructor(playerId: string, roomId: string) {
     super('host', playerId, roomId);
     window.host = this;
@@ -32,6 +30,14 @@ export class HostConnection extends WebRTCConnection {
       ]
     });
     peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
     let isIceCandidateHandled = false;
     peerConnection.onicecandidate = async (event) => {
       if (event.candidate && !isIceCandidateHandled) {
@@ -56,24 +62,15 @@ export class HostConnection extends WebRTCConnection {
       this.addEventListenersToNewPeer(dataChannel, playerId);
     };
 
-    peerConnection.ontrack = async (event) => {
+    peerConnection.ontrack = (event) => {
       console.log('Host: Received track from player', event, playerId, gameState.room.players);
       const mediaStream = new MediaStream();
       mediaStream.addTrack(event.track);
-      // wait to make sure the user has been added to the roomState
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const user = gameState.room.players?.find((player) => player.id === playerId);
-      if (user) {
-        user.stream = mediaStream;
-        user.mic = true;
-        console.log('Host: Added stream to player', user);
-      }
       this.mediaStreams.set(playerId, mediaStream);
-      // const audio = document.createElement('audio');
-      // audio.id = playerId;
-      // audio.srcObject = mediaStream;
+      const audio = document.createElement('audio');
+      audio.id = playerId;
+      audio.srcObject = mediaStream;
       // document.body.appendChild(audio);
-      // audio.play();
     };
 
     peerConnection.onnegotiationneeded = async (event) => {
@@ -98,11 +95,11 @@ export class HostConnection extends WebRTCConnection {
         })
       });
       const newAddedUserToDb: UserClient = await newAddedUserToDbRes.json();
-      if (this.mediaStreams.has(playerId)) {
-        console.log('user has already opened an audio track, so replacing now.. ', playerId);
-        newAddedUserToDb.stream = this.mediaStreams.get(playerId);
-        newAddedUserToDb.mic = true;
-      }
+      // if (this.mediaStreams.has(playerId)) {
+      //   console.log('user has already opened an audio track, so replacing now.. ', playerId);
+      //   newAddedUserToDb.stream = this.mediaStreams.get(playerId);
+      //   newAddedUserToDb.mic = false;
+      // }
       gameState.room.players?.push(newAddedUserToDb);
       // send room state to all players
       this.broadcastToPlayers({
@@ -132,6 +129,16 @@ export class HostConnection extends WebRTCConnection {
         case 'userInfoChange':
           // gameState.room.players = parsedRtcMessage.room.players;
           // gameState.room.messages = parsedRtcMessage.room.messages;
+          break;
+        case 'micToggle':
+          for (const player of gameState.room.players || []) {
+            if (player.id === playerId) {
+              player.mic = (parsedRtcMessage as RTCMessage<'micToggle'>).mic;
+              player.stream = player.mic ? this.mediaStreams.get(playerId) : undefined;
+              break;
+            }
+          }
+          this.broadcastToPlayers(parsedRtcMessage, { excludePlayerId: playerId });
           break;
         default:
           break;
@@ -217,9 +224,8 @@ export class HostConnection extends WebRTCConnection {
     this.players.forEach((peerConnection) => {
       const audioSender = peerConnection
         .getSenders()
-        .find((sender) => sender.track?.kind === 'audio');
+        .find((sender) => sender.transport?.state === 'connected');
       if (audioSender) {
-        console.log('replacing track in peer connection', stream);
         audioSender.replaceTrack(stream.getAudioTracks()[0]);
       }
     });

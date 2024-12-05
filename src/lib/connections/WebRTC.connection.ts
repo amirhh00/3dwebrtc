@@ -7,7 +7,7 @@ export abstract class WebRTCConnection {
   protected userId: string;
   protected roomId: string;
   public hasDataChannel = false;
-  public mediaStream: MediaStream | null = null;
+  public mediaStreams = new Map<string, MediaStream>();
 
   constructor(role: 'host' | 'player', userId: string, roomId: string) {
     this.role = role;
@@ -57,16 +57,4 @@ export abstract class WebRTCConnection {
     const updatedUser: UserClient = await updatedUserRes.json();
     return updatedUser;
   }
-  /**
-   * handle mic mute/unmute
-   */
-  // private async handleMicToggle(mic: boolean, userId?: string) {
-  //   return WebRTCConnection.handleMicToggle(mic, userId || this.userId);
-  // }
-  /**
-   * handle mic mute/unmute if the user has not connected to a room yet
-   */
-  // public static async handleMicToggle(mic: boolean, userId: string) {
-
-  // }
 }
