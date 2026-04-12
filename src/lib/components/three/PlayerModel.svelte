@@ -57,10 +57,12 @@
     <PositionalAudio
       id="al"
       bind:ref={pAudio}
+      autoplay={true}
       refDistance={10}
       volume={1}
       maxDistance={100}
       src={user.stream}
+      onerror={(e: unknown) => console.warn('[audio] PositionalAudio', playerId, e)}
     />
   {/if}
 </T.Mesh>

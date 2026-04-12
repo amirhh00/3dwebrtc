@@ -2,7 +2,7 @@ import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
 function debounce(fn: (...args: unknown[]) => void, delay: number) {
-  let timeout: Timer | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   return (...args: unknown[]) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => fn(...args), delay);

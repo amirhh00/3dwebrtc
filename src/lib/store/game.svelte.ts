@@ -29,3 +29,8 @@ export const gameState = $state({
   isOver: false as boolean,
   isRoomConnecting: false
 });
+
+/** Local mic stream for lobby voice-activity ring (cloned analysers; not sent over WebRTC). */
+export const audioUi = $state({
+  localMicStream: null as MediaStream | null
+});

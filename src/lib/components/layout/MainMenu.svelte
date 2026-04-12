@@ -1,5 +1,6 @@
 <script lang="ts">
   import { playerInfo, gameState, availableRooms, micState } from '$lib/store/game.svelte';
+  import { voiceActivity } from '$lib/audio/voiceMonitors.svelte';
   import { fade } from 'svelte/transition';
   import { cn } from '$lib/utils';
   import { Button } from '$lib/components/ui/button';
@@ -93,7 +94,12 @@
         {@const shortenedUserName = !!user.name ? user.name.charAt(0) : i}
         <li
           title={user.name?.toString()}
-          class="relative mt-2 flex h-8 w-8 items-center justify-center rounded-full bg-background p-1 text-sm uppercase opacity-50"
+          class={cn(
+            'relative mt-2 flex h-8 w-8 items-center justify-center rounded-full bg-background p-1 text-sm uppercase opacity-50 transition-shadow duration-100',
+            user.mic &&
+              voiceActivity.speaking[user.id] &&
+              'ring-2 ring-emerald-400 ring-offset-2 ring-offset-background shadow-[0_0_14px_rgba(52,211,153,0.55)]'
+          )}
         >
           {shortenedUserName}
           {#if user.mic}

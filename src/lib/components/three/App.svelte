@@ -6,6 +6,7 @@
   import { browser } from '$app/environment';
   import ChatBox from '$lib/components/ChatBox.svelte';
   import GameEventLog from '$lib/components/GameEventLog.svelte';
+  import VoiceActivityMonitor from '$lib/components/VoiceActivityMonitor.svelte';
   import { onMount } from 'svelte';
   import { playerInfo, gameState } from '$lib/store/game.svelte';
   import type { UserServer } from '$lib/@types/user.type';
@@ -26,6 +27,7 @@
 </script>
 
 <div class="absolute h-full w-full">
+  <VoiceActivityMonitor />
   <MainMenu />
 
   <div class="h-full w-full">

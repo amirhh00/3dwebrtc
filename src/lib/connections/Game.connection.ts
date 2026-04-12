@@ -1,5 +1,5 @@
 import type { RoomState, UserServer } from '$lib/@types/user.type';
-import { availableRooms, gameState } from '$lib/store/game.svelte';
+import { availableRooms, audioUi, gameState } from '$lib/store/game.svelte';
 import { HostConnection } from './HostWebRTC.connection';
 import { PlayerConnection } from './PlayerWebRTC.connection';
 import { PUBLIC_BASE_URL } from '$env/static/public';
@@ -77,6 +77,7 @@ class GameConnectionHandler {
   async handleMicToggle(mic: boolean) {
     if (mic) {
       this._mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioUi.localMicStream = this._mediaStream;
       this.webrtc?.handleMyMediaStream(this._mediaStream);
     } else {
       this.webrtc?.clearMicrophoneTracks();
@@ -84,6 +85,7 @@ class GameConnectionHandler {
         track.stop();
       });
       this._mediaStream = null;
+      audioUi.localMicStream = null;
     }
     gameState.room.players = gameState.room.players?.map((player) => {
       if (player.id === gameState.userId) {

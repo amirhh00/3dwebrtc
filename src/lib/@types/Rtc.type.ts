@@ -15,7 +15,8 @@ interface CommunicationEventBasse {
     | 'userInfoChange'
     | 'chatMessage'
     | 'positionUpdate'
-    | 'micToggle';
+    | 'micToggle'
+    | 'roomStateSync';
 }
 
 export interface positionUpdate extends CommunicationEventBasse {
@@ -40,6 +41,12 @@ export interface ChatMessage extends CommunicationEventBasse {
 export interface MicToggle extends CommunicationEventBasse {
   event: 'micToggle';
   mic?: boolean;
+  time: number;
+}
+
+export interface RoomStateSync extends CommunicationEventBasse {
+  event: 'roomStateSync';
+  players: UserClient[];
   time: number;
 }
 
@@ -69,6 +76,7 @@ export type MeshSignalPayload = MeshSignalOutbound | MeshSignalInbound;
 export type RTCMessage =
   | positionUpdate
   | MicToggle
+  | RoomStateSync
   | RoomStateChanged
   | ChatMessage
   | MeshSignalPayload;
