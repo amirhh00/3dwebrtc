@@ -1,10 +1,21 @@
 import { gameState, type UserClient } from '$lib/store/game.svelte';
 import type {
+  ChatMessage,
   MeshSignalOutbound,
   MicToggle,
   RTCMessage,
+  RoomStateChanged,
   positionUpdate
 } from '$lib/@types/Rtc.type';
+import {
+  displayName,
+  logChat,
+  logMic,
+  logPlayerJoined,
+  logPlayerLeft,
+  logRecolor,
+  logRename
+} from '$lib/store/gameEventLog.svelte';
 import { WebRTCConnection } from './WebRTC.connection';
 import { PUBLIC_BASE_URL } from '$env/static/public';
 import { DEFAULT_RTC_CONFIGURATION, waitForIceGatheringComplete } from './webrtc-ice';
@@ -70,6 +81,7 @@ export class HostConnection extends WebRTCConnection {
       //   newAddedUserToDb.mic = false;
       // }
       gameState.room.players = [...(gameState.room.players ?? []), newAddedUserToDb];
+      logPlayerJoined(newAddedUserToDb);
       // send room state to all players
       this.broadcastToPlayers({
         event: 'userJoined',
@@ -108,10 +120,37 @@ export class HostConnection extends WebRTCConnection {
           }
           this.broadcastToPlayers(parsedRtcMessage, { excludePlayerId: playerId });
           break;
-        case 'userInfoChange':
-          // gameState.room.players = parsedRtcMessage.room.players;
-          // gameState.room.messages = parsedRtcMessage.room.messages;
+        case 'userInfoChange': {
+          const msg = parsedRtcMessage as RoomStateChanged;
+          if (msg.user.id !== playerId) break;
+          const oldRow = gameState.room.players?.find((p) => p.id === msg.user.id);
+          gameState.room.players = gameState.room.players?.map((p) =>
+            p.id === msg.user.id
+              ? { ...p, ...msg.user, stream: p.stream, position: p.position, mic: p.mic }
+              : p
+          );
+          const updated = gameState.room.players?.find((p) => p.id === msg.user.id);
+          if (oldRow && updated) {
+            if ((oldRow.name ?? '') !== (updated.name ?? '')) {
+              logRename(updated, displayName(oldRow), displayName(updated));
+            }
+            if ((oldRow.color ?? '').trim() !== (updated.color ?? '').trim()) {
+              logRecolor(
+                updated,
+                (oldRow.color || '').trim() || '#888888',
+                (updated.color || '').trim() || '#888888'
+              );
+            }
+          }
+          this.broadcastToPlayers({
+            event: 'userInfoChange',
+            user: updated ?? msg.user,
+            room: gameState.room,
+            from: playerId,
+            time: Date.now()
+          });
           break;
+        }
         case 'micToggle':
           for (const player of gameState.room.players || []) {
             if (player.id === playerId) {
@@ -120,8 +159,20 @@ export class HostConnection extends WebRTCConnection {
               break;
             }
           }
+          {
+            const row = gameState.room.players?.find((p) => p.id === playerId);
+            if (row) logMic(row, (parsedRtcMessage as MicToggle).mic ?? false);
+          }
           this.broadcastToPlayers(parsedRtcMessage, { excludePlayerId: playerId });
           break;
+        case 'chatMessage': {
+          const chat = parsedRtcMessage as ChatMessage;
+          if (chat.from !== playerId) break;
+          const actor = gameState.room.players?.find((p) => p.id === playerId);
+          logChat(actor, chat.message, chat.time);
+          this.broadcastToPlayers(chat);
+          break;
+        }
         default:
           break;
       }
@@ -155,6 +206,7 @@ export class HostConnection extends WebRTCConnection {
     // const newRemovedUser: UserClient = await newRemovedUserRes.json();
     this.players.delete(playerId);
     if (this.players.size === 0) this.hasDataChannel = false;
+    logPlayerLeft(disconnectedUser);
     gameState.room.players = gameState.room.players?.filter((user) => user.id !== playerId);
     this.broadcastToPlayers(
       {
@@ -168,9 +220,16 @@ export class HostConnection extends WebRTCConnection {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public sendMessage(message: string): void {
-    throw new Error('Method not implemented.');
+    const chat: ChatMessage = {
+      event: 'chatMessage',
+      message,
+      from: this.userId,
+      time: Date.now()
+    };
+    const actor = gameState.room.players?.find((p) => p.id === this.userId);
+    logChat(actor, message, chat.time);
+    this.broadcastToPlayers(chat);
   }
 
   public sendPositionUpdate(x: number, y: number, z: number): void {
@@ -183,16 +242,42 @@ export class HostConnection extends WebRTCConnection {
   }
 
   public override async updateUserInfoChange(name: string, color: string, userId: string) {
+    const oldRow = gameState.room.players?.find((p) => p.id === userId);
     const updatedUser = await super.updateUserInfoChange(name, color, userId);
-    // broadcast to all players
+    gameState.room.players = gameState.room.players?.map((p) =>
+      p.id === userId ? { ...p, ...updatedUser, stream: p.stream, position: p.position, mic: p.mic } : p
+    );
+    const row = gameState.room.players?.find((p) => p.id === userId);
+    if (oldRow && row) {
+      if ((oldRow.name ?? '') !== (row.name ?? '')) {
+        logRename(row, displayName(oldRow), displayName(row));
+      }
+      if ((oldRow.color ?? '').trim() !== (row.color ?? '').trim()) {
+        logRecolor(
+          row,
+          (oldRow.color || '').trim() || '#888888',
+          (row.color || '').trim() || '#888888'
+        );
+      }
+    }
     this.broadcastToPlayers({
-      from: gameState.userId,
+      from: this.userId,
       event: 'userInfoChange',
-      user: updatedUser,
+      user: row ?? updatedUser,
       room: gameState.room,
       time: new Date().getTime()
     });
     return updatedUser;
+  }
+
+  /** Notify all guests when the host toggles microphone (UI + mute state). */
+  public broadcastHostMicState(mic: boolean): void {
+    this.broadcastToPlayers({
+      event: 'micToggle',
+      mic,
+      from: this.userId,
+      time: Date.now()
+    });
   }
 
   /**

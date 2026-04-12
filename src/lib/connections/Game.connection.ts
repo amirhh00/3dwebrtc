@@ -6,6 +6,7 @@ import { PUBLIC_BASE_URL } from '$env/static/public';
 import { dev } from '$app/environment';
 import { WebRTCConnection } from './WebRTC.connection';
 import { toast } from 'svelte-sonner';
+import { logMic } from '$lib/store/gameEventLog.svelte';
 
 class GameConnectionHandler {
   private conn: WebSocket | null = null;
@@ -30,6 +31,7 @@ class GameConnectionHandler {
           gameState.room.messages = content.messages;
           gameState.isPaused = false;
           gameState.isRoomConnecting = false;
+          this.isHost = true;
           // should pass this_mediaStream as a constructor
           this.webrtc = new HostConnection(gameState.userId!, content.id);
           resolve();
@@ -55,6 +57,7 @@ class GameConnectionHandler {
   }
 
   async joinRoom(roomId: string) {
+    this.isHost = false;
     this.webrtc = new PlayerConnection(gameState.userId!, roomId);
   }
 
@@ -88,6 +91,13 @@ class GameConnectionHandler {
       }
       return player;
     });
+    const selfRow = gameState.room.players?.find((p) => p.id === gameState.userId);
+    if (selfRow) logMic(selfRow, mic);
+    if (this.webrtc instanceof HostConnection) {
+      this.webrtc.broadcastHostMicState(mic);
+    } else if (this.webrtc instanceof PlayerConnection) {
+      this.webrtc.notifyMicState(mic);
+    }
   }
 
   disconnect() {

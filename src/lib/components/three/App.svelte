@@ -3,8 +3,9 @@
   import { World } from '@threlte/rapier';
   import Scene from './Scene.svelte';
   import MainMenu from '$lib/components/layout/MainMenu.svelte';
-  import { browser, dev } from '$app/environment';
+  import { browser } from '$app/environment';
   import ChatBox from '$lib/components/ChatBox.svelte';
+  import GameEventLog from '$lib/components/GameEventLog.svelte';
   import { onMount } from 'svelte';
   import { playerInfo, gameState } from '$lib/store/game.svelte';
   import type { UserServer } from '$lib/@types/user.type';
@@ -37,5 +38,6 @@
       </World>
     </Canvas>
   </div>
+  <GameEventLog />
   <ChatBox />
 </div>

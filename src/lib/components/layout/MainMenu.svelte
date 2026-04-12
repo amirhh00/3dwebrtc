@@ -6,10 +6,11 @@
   import { browser } from '$app/environment';
   import { gameConnection as conn } from '$lib/connections/Game.connection';
   import type { UserDetails } from '$lib/@types/user.type';
-  import { MicIcon, MicOff } from 'lucide-svelte';
+  import { Loader2, MicIcon, MicOff } from 'lucide-svelte';
 
   // svelte-ignore non_reactive_update
   let isFirstRender = true;
+  let isLoadingRooms = $state(false);
 
   const MainMenuScreens = ['Main Menu', 'Host Game', 'Join Game', 'Settings'] as const;
   let currentMainMenuScreen = $state<(typeof MainMenuScreens)[number]>('Main Menu');
@@ -50,9 +51,14 @@
     await conn.createRoom();
   }
 
-  function seekRooms() {
+  async function seekRooms() {
     currentMainMenuScreen = 'Join Game';
-    conn.seekRooms();
+    isLoadingRooms = true;
+    try {
+      await conn.seekRooms();
+    } finally {
+      isLoadingRooms = false;
+    }
   }
 
   function joinRoom(roomId: string) {
@@ -132,8 +138,22 @@
           {/if}
           <!-- Join Game Screen -->
         {:else if currentMainMenuScreen === 'Join Game'}
-          {#if gameState.isRoomConnecting}
-            <li>Connecting...</li>
+          {#if isLoadingRooms}
+            <li class="flex flex-col items-center justify-center gap-3 py-10">
+              <Loader2
+                class="h-9 w-9 animate-spin text-muted-foreground"
+                aria-hidden="true"
+              />
+              <p class="mb-0 text-sm text-muted-foreground">Loading rooms…</p>
+            </li>
+          {:else if gameState.isRoomConnecting}
+            <li class="flex flex-col items-center gap-3 py-6">
+              <Loader2
+                class="h-9 w-9 animate-spin text-muted-foreground"
+                aria-hidden="true"
+              />
+              <p class="mb-0 text-sm text-muted-foreground">Connecting to room…</p>
+            </li>
           {:else}
             {#each availableRooms.rooms as room}
               <li>

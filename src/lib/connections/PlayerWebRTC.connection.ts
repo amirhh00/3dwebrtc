@@ -1,13 +1,25 @@
 import { PUBLIC_BASE_URL } from '$env/static/public';
 import type { RoomState } from '$lib/@types/user.type';
 import type {
+  ChatMessage,
   MeshSignalBody,
   MeshSignalInbound,
   MeshSignalOutbound,
   MicToggle,
+  RoomStateChanged,
   RTCMessage
 } from '$lib/@types/Rtc.type';
-import { gameState, micState } from '$lib/store/game.svelte';
+import { gameState, micState, type UserClient } from '$lib/store/game.svelte';
+import {
+  displayName,
+  logChat,
+  logMic,
+  logPlayerJoined,
+  logPlayerLeft,
+  logRecolor,
+  logRename
+} from '$lib/store/gameEventLog.svelte';
+import { get } from 'svelte/store';
 import { WebRTCConnection } from './WebRTC.connection';
 import { DEFAULT_RTC_CONFIGURATION, waitForIceGatheringComplete } from './webrtc-ice';
 
@@ -42,9 +54,19 @@ export class PlayerConnection extends WebRTCConnection {
     };
 
     void this.setupConnection();
-    micState.subscribe((value) => {
-      this.handleMicToggle(value);
-    });
+  }
+
+  /** Tell the host (and thus every peer) the current mic UI state; call after media is ready. */
+  public notifyMicState(mic: boolean): void {
+    if (this.peerConnection.channel?.readyState !== 'open' || !gameState.room.roomId) return;
+    this.peerConnection.channel.send(
+      JSON.stringify({
+        event: 'micToggle',
+        mic,
+        from: gameState.userId,
+        time: Date.now()
+      } satisfies RTCMessage)
+    );
   }
 
   private isOtherGuest(peerId: string): boolean {
@@ -161,19 +183,6 @@ export class PlayerConnection extends WebRTCConnection {
     }
   }
 
-  private handleMicToggle(mic: boolean) {
-    if (this.peerConnection.connectionState === 'connected' && gameState.room.roomId) {
-      this.peerConnection.channel?.send(
-        JSON.stringify({
-          event: 'micToggle',
-          mic,
-          from: gameState.userId,
-          time: new Date().getTime()
-        } satisfies RTCMessage)
-      );
-    }
-  }
-
   private async setupConnection() {
     try {
       this.setupDataChannel('player-data');
@@ -196,6 +205,7 @@ export class PlayerConnection extends WebRTCConnection {
       this.hasDataChannel = true;
       gameState.isRoomConnecting = false;
       gameState.isPaused = false;
+      this.notifyMicState(get(micState));
       this.startMeshWithExistingGuests();
     };
     dataChannel.onmessage = (event) => {
@@ -208,10 +218,46 @@ export class PlayerConnection extends WebRTCConnection {
           }
           break;
         }
-        case 'userInfoChange':
-          gameState.room.players = message.room.players;
-          gameState.room.messages = message.room.messages;
+        case 'userInfoChange': {
+          const m = message as RoomStateChanged;
+          const prev = new Map((gameState.room.players ?? []).map((p) => [p.id, p]));
+          for (const incoming of m.room.players ?? []) {
+            const old = prev.get(incoming.id);
+            if (!old) continue;
+            const merged: UserClient = {
+              ...old,
+              ...incoming,
+              stream: old.stream,
+              mic: old.mic,
+              position: old.position
+            };
+            if ((old.name ?? '') !== (incoming.name ?? '')) {
+              logRename(merged, displayName(old), displayName(merged));
+            }
+            if ((old.color ?? '').trim() !== (incoming.color ?? '').trim()) {
+              logRecolor(
+                merged,
+                (old.color || '').trim() || '#888888',
+                (incoming.color || '').trim() || '#888888'
+              );
+            }
+          }
+          gameState.room.players = (m.room.players ?? []).map((incoming) => {
+            const old = prev.get(incoming.id);
+            if (!old) return incoming;
+            return {
+              ...old,
+              ...incoming,
+              stream: old.stream,
+              mic: old.mic,
+              position: old.position
+            };
+          });
+          if (m.room.messages) {
+            gameState.room.messages = m.room.messages;
+          }
           break;
+        }
         case 'positionUpdate':
           gameState.room.players = gameState.room.players?.map((player) => {
             if (player.id === message.from) {
@@ -221,24 +267,38 @@ export class PlayerConnection extends WebRTCConnection {
           });
           break;
         case 'userLeft':
+          logPlayerLeft(message.user);
           gameState.room.players = gameState.room.players?.filter(
             (player) => player.id !== message.user.id
           );
           this.closeMeshPeer(message.user.id);
           break;
         case 'userJoined':
+          logPlayerJoined(message.user);
           gameState.room.players = [...(gameState.room.players ?? []), message.user];
           if (this.isOtherGuest(message.user.id) && this.userId < message.user.id) {
             void this.ensureMeshWithGuest(message.user.id);
           }
           break;
-        case 'micToggle':
+        case 'micToggle': {
+          const mt = message as MicToggle;
           gameState.room.players = gameState.room.players?.map((player) => {
-            if (player.id !== message.from) return player;
-            const mic = (message as MicToggle).mic ?? false;
+            if (player.id !== mt.from) return player;
+            const mic = mt.mic ?? false;
             return { ...player, mic, stream: mic ? player.stream : undefined };
           });
+          if (mt.from !== gameState.userId) {
+            const actor = gameState.room.players?.find((p) => p.id === mt.from);
+            if (actor) logMic(actor, mt.mic ?? false);
+          }
           break;
+        }
+        case 'chatMessage': {
+          const c = message as ChatMessage;
+          const actor = gameState.room.players?.find((p) => p.id === c.from);
+          logChat(actor, c.message, c.time);
+          break;
+        }
         default:
           break;
       }
@@ -295,15 +355,20 @@ export class PlayerConnection extends WebRTCConnection {
 
   public override async updateUserInfoChange(name: string, color: string, userId: string) {
     const updatedUser = await super.updateUserInfoChange(name, color, userId);
-    this.peerConnection.channel?.send(
-      JSON.stringify({
-        event: 'userInfoChange',
-        user: updatedUser,
-        room: gameState.room,
-        from: gameState.userId,
-        time: new Date().getTime()
-      } satisfies RTCMessage)
+    gameState.room.players = gameState.room.players?.map((p) =>
+      p.id === userId ? { ...p, ...updatedUser, stream: p.stream, position: p.position, mic: p.mic } : p
     );
+    if (this.peerConnection.channel?.readyState === 'open') {
+      this.peerConnection.channel.send(
+        JSON.stringify({
+          event: 'userInfoChange',
+          user: updatedUser,
+          room: gameState.room,
+          from: gameState.userId,
+          time: new Date().getTime()
+        } satisfies RTCMessage)
+      );
+    }
     return updatedUser;
   }
 
