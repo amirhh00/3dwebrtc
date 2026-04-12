@@ -63,6 +63,10 @@ export class HostConnection extends WebRTCConnection {
     console.log(`[HOST] 🔗 Creating RTCPeerConnection for ${playerId}`);
     const peerConnection = new RTCPeerConnection(DEFAULT_RTC_CONFIGURATION);
 
+    // Add audio transceiver so we can send/receive audio from this player
+    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    console.log(`[HOST] ✅ Added audio transceiver for ${playerId}`);
+
     peerConnection.ondatachannel = (event) => {
       console.log(`[HOST] 📡 Data channel received from ${playerId}`);
       const dataChannel = event.channel;

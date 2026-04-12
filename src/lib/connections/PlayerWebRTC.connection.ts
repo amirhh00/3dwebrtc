@@ -60,15 +60,12 @@ export class PlayerConnection extends WebRTCConnection {
       }
     };
 
-    this.peerConnection.onconnectionstatechange = () => {
-      console.log(`[PLAYER] 🔄 Connection state changed:`, this.peerConnection.connectionState);
-    };
-
     this.peerConnection.oniceconnectionstatechange = () => {
       console.log(`[PLAYER] 🧊 ICE connection state:`, this.peerConnection.iceConnectionState);
     };
 
     this.peerConnection.onconnectionstatechange = () => {
+      console.log(`[PLAYER] 🔄 Connection state changed:`, this.peerConnection.connectionState);
       if (this.peerConnection.connectionState === 'failed') {
         console.error(`[PLAYER] ❌ Connection FAILED`);
         gameState.isRoomConnecting = false;
@@ -251,14 +248,26 @@ export class PlayerConnection extends WebRTCConnection {
 
   private async setupConnection() {
     try {
+      console.log(`[PLAYER] 🔌 Starting WebRTC connection setup...`);
       this.setupDataChannel('player-data');
 
+      console.log(`[PLAYER] 📝 Creating offer...`);
       const offer = await this.peerConnection.createOffer();
+      console.log(`[PLAYER] ✅ Offer created`);
+
+      console.log(`[PLAYER] 📌 Setting local description...`);
       await this.peerConnection.setLocalDescription(offer);
+      console.log(`[PLAYER] ✅ Local description set`);
+
+      console.log(`[PLAYER] 🧊 Waiting for ICE gathering...`);
       await waitForIceGatheringComplete(this.peerConnection);
+      console.log(`[PLAYER] ✅ ICE gathering complete`);
+
+      console.log(`[PLAYER] 🌐 Sending offer to signaling server...`);
       await this.handleIceCandidate();
+      console.log(`[PLAYER] ✅ Handshake initiated`);
     } catch (e) {
-      console.error('Player WebRTC setup failed', e);
+      console.error('[PLAYER] ❌ WebRTC setup failed:', e);
       gameState.isRoomConnecting = false;
       gameState.isPaused = true;
     }
@@ -424,10 +433,6 @@ export class PlayerConnection extends WebRTCConnection {
         default:
           console.log(`[PLAYER] ❓ Unknown message type:`, (message as { event: string }).event);
       }
-    };
-    dataChannel.onclose = () => {
-      console.log(`${this.role} data channel closed. reloading page..`);
-      window.location.reload();
     };
     this.peerConnection.channel = dataChannel;
   }
