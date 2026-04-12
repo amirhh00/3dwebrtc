@@ -34,6 +34,11 @@ export abstract class WebRTCConnection {
 
   public abstract handleMyMediaStream(stream: MediaStream): void;
 
+  /** Stop sending microphone audio on all peer connections (tracks may already be stopped by the UI). */
+  public clearMicrophoneTracks(): void {
+    // default: host/player override when they attach media
+  }
+
   /**
    * Update the user info in the database and send the updated user info to the other peer(s)
    * @param name The updated name of the user

@@ -36,9 +36,10 @@ class GameConnectionHandler {
         } else if (data.type === 'newUser') {
           type NewUserContent = RoomState & { newUser: UserServer & { sdp: string } };
           const content = data.content as NewUserContent;
-          const offer = JSON.parse(content.newUser.sdp);
-          // should pass this_mediaStream as a constructor
-          (this.webrtc as HostConnection).handleNewPlayer(content.newUser.id, offer);
+          const offer = JSON.parse(content.newUser.sdp) as RTCSessionDescriptionInit;
+          void (this.webrtc as HostConnection)
+            .handleNewPlayer(content.newUser.id, offer)
+            .catch((err) => console.error('handleNewPlayer failed', err));
         }
       };
     });
@@ -75,6 +76,7 @@ class GameConnectionHandler {
       this._mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       this.webrtc?.handleMyMediaStream(this._mediaStream);
     } else {
+      this.webrtc?.clearMicrophoneTracks();
       this._mediaStream?.getTracks().forEach((track) => {
         track.stop();
       });

@@ -1,10 +1,18 @@
 import { gameState, type UserClient } from '$lib/store/game.svelte';
-import type { RTCMessage } from '$lib/@types/Rtc.type';
+import type {
+  MeshSignalOutbound,
+  MicToggle,
+  RTCMessage,
+  positionUpdate
+} from '$lib/@types/Rtc.type';
 import { WebRTCConnection } from './WebRTC.connection';
 import { PUBLIC_BASE_URL } from '$env/static/public';
+import { DEFAULT_RTC_CONFIGURATION, waitForIceGatheringComplete } from './webrtc-ice';
 
 export class HostConnection extends WebRTCConnection {
   private players = new Map<string, RTCPeerConnection>();
+  /** One cloned audio track per guest PC — a single track cannot be attached to multiple senders. */
+  private hostMicClones = new Map<string, MediaStreamTrack>();
   constructor(playerId: string, roomId: string) {
     super('host', playerId, roomId);
     window.host = this;
@@ -15,46 +23,18 @@ export class HostConnection extends WebRTCConnection {
     await newPeerConnection.setRemoteDescription(offer);
     const answer = await newPeerConnection.createAnswer();
     await newPeerConnection.setLocalDescription(answer);
+    await waitForIceGatheringComplete(newPeerConnection);
+    const sdp = newPeerConnection.localDescription?.toJSON();
+    await fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sdp, playerId })
+    });
   }
 
   private createNewPeerConnection(playerId: string): RTCPeerConnection {
-    const peerConnection = new RTCPeerConnection({
-      iceServers: [
-        {
-          urls: [
-            'stun:stun.l.google.com:19302',
-            'stun:stun1.l.google.com:19302'
-            // More STUN/TURN servers here if needed
-          ]
-        }
-      ]
-    });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    let isIceCandidateHandled = false;
-    peerConnection.onicecandidate = async (event) => {
-      if (event.candidate && !isIceCandidateHandled) {
-        isIceCandidateHandled = true;
-        const sdp = peerConnection.localDescription?.toJSON();
-        const body = JSON.stringify({
-          sdp,
-          playerId
-        });
-        fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body
-        });
-      }
-    };
+    const peerConnection = new RTCPeerConnection(DEFAULT_RTC_CONFIGURATION);
 
     peerConnection.ondatachannel = (event) => {
       const dataChannel = event.channel;
@@ -63,21 +43,10 @@ export class HostConnection extends WebRTCConnection {
     };
 
     peerConnection.ontrack = (event) => {
-      console.log('Host: Received track from player', event, playerId, gameState.room.players);
-      const mediaStream = new MediaStream();
-      mediaStream.addTrack(event.track);
+      const mediaStream = event.streams[0] ?? new MediaStream([event.track]);
       this.mediaStreams.set(playerId, mediaStream);
-      const audio = document.createElement('audio');
-      audio.id = playerId;
-      audio.srcObject = mediaStream;
-      // document.body.appendChild(audio);
     };
 
-    peerConnection.onnegotiationneeded = async (event) => {
-      console.log('Host: negotiation needed', event);
-    };
-
-    // this.players.push(new PlayersPeer(playerId, peerConnection, peerConnection.createDataChannel('host-data')));
     this.players.set(playerId, peerConnection);
     return peerConnection;
   }
@@ -100,7 +69,7 @@ export class HostConnection extends WebRTCConnection {
       //   newAddedUserToDb.stream = this.mediaStreams.get(playerId);
       //   newAddedUserToDb.mic = false;
       // }
-      gameState.room.players?.push(newAddedUserToDb);
+      gameState.room.players = [...(gameState.room.players ?? []), newAddedUserToDb];
       // send room state to all players
       this.broadcastToPlayers({
         event: 'userJoined',
@@ -116,11 +85,24 @@ export class HostConnection extends WebRTCConnection {
     dataChannel.onmessage = (message) => {
       // console.log(`Host: Received message from player ${playerId}: `, message.data);
       const parsedRtcMessage = JSON.parse(message.data) as RTCMessage;
+      if (parsedRtcMessage.event === 'meshSignal' && 'to' in parsedRtcMessage) {
+        const relay = parsedRtcMessage as MeshSignalOutbound;
+        if (relay.to !== playerId && this.players.has(relay.to)) {
+          const inbound: RTCMessage = {
+            event: 'meshSignal',
+            from: playerId,
+            body: relay.body,
+            time: relay.time
+          };
+          this.players.get(relay.to)?.channel?.send(JSON.stringify(inbound));
+        }
+        return;
+      }
       switch (parsedRtcMessage.event) {
         case 'positionUpdate':
           for (const player of gameState.room.players || []) {
             if (player.id === playerId) {
-              player.position = (parsedRtcMessage as RTCMessage<'positionUpdate'>).position;
+              player.position = (parsedRtcMessage as positionUpdate).position;
               break;
             }
           }
@@ -133,7 +115,7 @@ export class HostConnection extends WebRTCConnection {
         case 'micToggle':
           for (const player of gameState.room.players || []) {
             if (player.id === playerId) {
-              player.mic = (parsedRtcMessage as RTCMessage<'micToggle'>).mic;
+              player.mic = (parsedRtcMessage as MicToggle).mic;
               player.stream = player.mic ? this.mediaStreams.get(playerId) : undefined;
               break;
             }
@@ -148,11 +130,7 @@ export class HostConnection extends WebRTCConnection {
 
   private broadcastToPlayers(msg?: RTCMessage, options?: { excludePlayerId?: string }) {
     this.players.forEach((peerConnection, playerId) => {
-      if (
-        options?.excludePlayerId &&
-        options.excludePlayerId === playerId &&
-        peerConnection.channel?.readyState !== 'open'
-      ) {
+      if (options?.excludePlayerId && options.excludePlayerId === playerId) {
         return;
       }
       try {
@@ -221,13 +199,29 @@ export class HostConnection extends WebRTCConnection {
    * host should just add their media stream to all players tracks
    */
   public handleMyMediaStream(stream: MediaStream): void {
+    const track = stream.getAudioTracks()[0];
+    if (!track) return;
+    this.clearMicrophoneTracks();
+    this.players.forEach((peerConnection, pid) => {
+      const clone = track.clone();
+      this.hostMicClones.set(pid, clone);
+      const audioSender = peerConnection
+        .getSenders()
+        .find((sender) => sender.track === null || sender.track?.kind === 'audio');
+      if (audioSender) {
+        void audioSender.replaceTrack(clone);
+      }
+    });
+  }
+
+  public override clearMicrophoneTracks(): void {
+    this.hostMicClones.forEach((t) => t.stop());
+    this.hostMicClones.clear();
     this.players.forEach((peerConnection) => {
       const audioSender = peerConnection
         .getSenders()
-        .find((sender) => sender.transport?.state === 'connected');
-      if (audioSender) {
-        audioSender.replaceTrack(stream.getAudioTracks()[0]);
-      }
+        .find((sender) => sender.track === null || sender.track?.kind === 'audio');
+      void audioSender?.replaceTrack(null);
     });
   }
 }

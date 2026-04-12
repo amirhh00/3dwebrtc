@@ -10,6 +10,8 @@ export type UserServer = {
   room_id: string;
   created_at: string;
   updated_at: string;
+  /** Present on signaling responses while joining a room. */
+  sdp?: RTCSessionDescriptionInit;
 };
 
 export type UserDetails = Partial<UserServer>;
