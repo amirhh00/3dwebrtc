@@ -27,47 +27,45 @@ import { DEFAULT_RTC_CONFIGURATION, waitForIceGatheringComplete } from './webrtc
 export class PlayerConnection extends WebRTCConnection {
   /** Signalling + game state (host). */
   private peerConnection: RTCPeerConnection;
+  /** Reference to the audio sender for direct mic replacement */
+  private playerAudioSender: RTCRtpSender | null = null;
   /** Full mesh between guests: direct audio to every other non-host player. */
   private readonly meshPeers = new Map<string, RTCPeerConnection>();
   private readonly meshTrackClones = new Map<string, MediaStreamTrack>();
   private currentMicTrack: MediaStreamTrack | null = null;
+  /** Keep audio context alive to prevent GC from invalidating dummy track */
+  private dummyAudioContext: {
+    context: AudioContext;
+    oscillator: OscillatorNode;
+    destination: MediaStreamAudioDestinationNode;
+  } | null = null;
 
   constructor(playerId: string, roomId: string) {
     super('player', playerId, roomId);
     window.client = this;
-    console.log(`[PLAYER] 🎮 Constructor called. PlayerId: ${playerId}, RoomId: ${roomId}`);
 
     this.peerConnection = new RTCPeerConnection(DEFAULT_RTC_CONFIGURATION);
-    console.log(`[PLAYER] ✅ RTCPeerConnection created`);
-
-    this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    console.log(`[PLAYER] ✅ Added audio transceiver`);
+    const transceiver = this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    this.playerAudioSender = transceiver.sender;
 
     this.peerConnection.ontrack = (event) => {
-      console.log(`[PLAYER] 🔊 Received track:`, event.track.kind, event.track.id);
       const stream = event.streams[0] ?? new MediaStream([event.track]);
-      console.log(`[PLAYER] ✅ Got stream:`, stream.id, 'tracks:', stream.getTracks().length);
-
       const host = gameState.room.players?.find((p) => p.is_host);
       if (host) {
-        console.log(`[PLAYER] 👤 Found host:`, host.id, host.name);
         gameState.room.players = gameState.room.players?.map((p) =>
           p.id === host.id ? { ...p, stream } : p
         );
-        console.log(`[PLAYER] ✅ Updated host stream in game state`);
       } else {
         console.warn(`[PLAYER] ⚠️ Host not found in players list!`);
+        console.warn(
+          `[PLAYER] ⚠️ Available players:`,
+          gameState.room.players?.map((p) => `${p.name}(host=${p.is_host})`) ?? []
+        );
       }
     };
 
-    this.peerConnection.oniceconnectionstatechange = () => {
-      console.log(`[PLAYER] 🧊 ICE connection state:`, this.peerConnection.iceConnectionState);
-    };
-
     this.peerConnection.onconnectionstatechange = () => {
-      console.log(`[PLAYER] 🔄 Connection state changed:`, this.peerConnection.connectionState);
       if (this.peerConnection.connectionState === 'failed') {
-        console.error(`[PLAYER] ❌ Connection FAILED`);
         gameState.isRoomConnecting = false;
         gameState.isPaused = true;
       }
@@ -78,14 +76,9 @@ export class PlayerConnection extends WebRTCConnection {
 
   /** Tell the host (and thus every peer) the current mic UI state; call after media is ready. */
   public notifyMicState(mic: boolean): void {
-    console.log(`[PLAYER] 🎙️ Notifying host of mic state:`, mic);
     if (this.peerConnection.channel?.readyState !== 'open' || !gameState.room.roomId) {
-      console.warn(
-        `[PLAYER] ⚠️ Cannot notify mic state - channel state: ${this.peerConnection.channel?.readyState}, room: ${gameState.room.roomId}`
-      );
       return;
     }
-    console.log(`[PLAYER] ✅ Sending mic state to host`);
     this.peerConnection.channel.send(
       JSON.stringify({
         event: 'micToggle',
@@ -113,24 +106,19 @@ export class PlayerConnection extends WebRTCConnection {
   }
 
   private createMeshPeerConnection(peerId: string): RTCPeerConnection {
-    console.log(`[PLAYER] 🔗 Creating mesh peer connection with ${peerId}`);
     const pc = new RTCPeerConnection(DEFAULT_RTC_CONFIGURATION);
     pc.addTransceiver('audio', { direction: 'sendrecv' });
     pc.ontrack = (event) => {
-      console.log(`[PLAYER] 🔊 Received mesh track from ${peerId}:`, event.track.kind);
       const stream = event.streams[0] ?? new MediaStream([event.track]);
       gameState.room.players = gameState.room.players?.map((p) =>
         p.id === peerId ? { ...p, stream } : p
       );
-      console.log(`[PLAYER] ✅ Updated stream for mesh peer ${peerId}`);
     };
     pc.onconnectionstatechange = () => {
-      console.log(`[PLAYER] 🔄 Mesh connection state with ${peerId}:`, pc.connectionState);
       if (pc.connectionState === 'failed') {
         console.error(`[PLAYER] ❌ Mesh connection failed with ${peerId}`);
         this.closeMeshPeer(peerId);
       } else if (pc.connectionState === 'connected') {
-        console.log(`[PLAYER] ✅ Mesh connection established with ${peerId}`);
         void this.attachMicCloneToMesh(peerId);
       }
     };
@@ -138,7 +126,6 @@ export class PlayerConnection extends WebRTCConnection {
   }
 
   private attachMicCloneToMesh(peerId: string): void {
-    console.log(`[PLAYER] 🎙️ Attaching mic clone to mesh peer ${peerId}`);
     if (!this.currentMicTrack) {
       console.warn(`[PLAYER] ⚠️ No mic track available!`);
       return;
@@ -153,15 +140,7 @@ export class PlayerConnection extends WebRTCConnection {
     this.meshTrackClones.set(peerId, clone);
     const sender = pc.getSenders().find((s) => s.track === null || s.track?.kind === 'audio');
     if (sender) {
-      console.log(`[PLAYER] ✅ Found audio sender for ${peerId}, replacing track`);
-      void sender
-        .replaceTrack(clone)
-        .then(() => {
-          console.log(`[PLAYER] ✅ Successfully attached mic to ${peerId}`);
-        })
-        .catch((e) => {
-          console.error(`[PLAYER] ❌ Failed to attach mic to ${peerId}:`, e);
-        });
+      void sender.replaceTrack(clone);
     } else {
       console.warn(`[PLAYER] ⚠️ No audio sender found for ${peerId}`);
     }
@@ -169,29 +148,23 @@ export class PlayerConnection extends WebRTCConnection {
 
   private async ensureMeshWithGuest(peerId: string): Promise<void> {
     if (!this.isOtherGuest(peerId) || this.meshPeers.has(peerId)) {
-      console.log(`[PLAYER] ⏭️ Skipping mesh with ${peerId} - already connected or not a guest`);
       return;
     }
     if (this.userId >= peerId) {
-      console.log(`[PLAYER] ⏭️ Skipping mesh with ${peerId} - will receive offer instead`);
       return;
     }
 
-    console.log(`[PLAYER] 🎯 Initiating mesh with guest ${peerId}`);
     const pc = this.createMeshPeerConnection(peerId);
     this.meshPeers.set(peerId, pc);
     try {
-      console.log(`[PLAYER] 🎙️ Creating offer for ${peerId}`);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      console.log(`[PLAYER] 🧊 Waiting for ICE gathering...`);
       await waitForIceGatheringComplete(pc);
       const loc = pc.localDescription?.toJSON();
       if (!loc) {
         console.error(`[PLAYER] ❌ No local description for ${peerId}`);
         return;
       }
-      console.log(`[PLAYER] 📤 Sending mesh offer to ${peerId}`);
       this.sendMeshSignal(peerId, { type: 'offer', sdp: loc });
     } catch (e) {
       console.error('Mesh offer failed', peerId, e);
@@ -248,24 +221,27 @@ export class PlayerConnection extends WebRTCConnection {
 
   private async setupConnection() {
     try {
-      console.log(`[PLAYER] 🔌 Starting WebRTC connection setup...`);
       this.setupDataChannel('player-data');
 
-      console.log(`[PLAYER] 📝 Creating offer...`);
+      // Create dummy track FIRST so it's attached to transceiver from the start
+      const dummyTrack = await this.createDummyAudioTrack();
+      if (!dummyTrack) {
+        console.error(`[PLAYER] ❌ Failed to create dummy track`);
+        return;
+      }
+
+      // Attach dummy track to the audio transceiver
+      if (this.playerAudioSender) {
+        await this.playerAudioSender.replaceTrack(dummyTrack);
+      } else {
+        console.warn(`[PLAYER] ⚠️ No audio sender available`);
+      }
+
       const offer = await this.peerConnection.createOffer();
-      console.log(`[PLAYER] ✅ Offer created`);
 
-      console.log(`[PLAYER] 📌 Setting local description...`);
       await this.peerConnection.setLocalDescription(offer);
-      console.log(`[PLAYER] ✅ Local description set`);
-
-      console.log(`[PLAYER] 🧊 Waiting for ICE gathering...`);
       await waitForIceGatheringComplete(this.peerConnection);
-      console.log(`[PLAYER] ✅ ICE gathering complete`);
-
-      console.log(`[PLAYER] 🌐 Sending offer to signaling server...`);
       await this.handleIceCandidate();
-      console.log(`[PLAYER] ✅ Handshake initiated`);
     } catch (e) {
       console.error('[PLAYER] ❌ WebRTC setup failed:', e);
       gameState.isRoomConnecting = false;
@@ -273,18 +249,40 @@ export class PlayerConnection extends WebRTCConnection {
     }
   }
 
+  private async createDummyAudioTrack(): Promise<MediaStreamTrack | null> {
+    try {
+      const audioContext = new (
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: unknown }).webkitAudioContext
+      )();
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const destination = audioContext.createMediaStreamDestination();
+
+      gain.gain.value = 0;
+      oscillator.connect(gain);
+      gain.connect(destination);
+      oscillator.start();
+
+      // Store references to prevent garbage collection
+      this.dummyAudioContext = { context: audioContext, oscillator, destination };
+
+      const track = destination.stream.getAudioTracks()[0];
+      return track ?? null;
+    } catch (e) {
+      console.error(`[PLAYER] ❌ Error creating dummy track:`, e);
+      return null;
+    }
+  }
+
   private setupDataChannel(label: string) {
-    console.log(`[PLAYER] 📡 Setting up data channel: ${label}`);
     const dataChannel = this.peerConnection.createDataChannel(label);
 
     dataChannel.onopen = () => {
-      console.log(`[PLAYER] ✅ DATA CHANNEL OPENED`);
       this.hasDataChannel = true;
       gameState.isRoomConnecting = false;
       gameState.isPaused = false;
-      console.log(`[PLAYER] ✅ Connection ready. Notifying host of mic state...`);
       this.notifyMicState(get(micState));
-      console.log(`[PLAYER] 🔄 Starting mesh with existing guests`);
       this.startMeshWithExistingGuests();
     };
 
@@ -299,10 +297,8 @@ export class PlayerConnection extends WebRTCConnection {
 
     dataChannel.onmessage = (event) => {
       const message = JSON.parse(event.data) as RTCMessage;
-      // console.log(`[PLAYER] 📨 Received message:`, message.event);
       switch (message.event) {
         case 'meshSignal': {
-          console.log(`[PLAYER] 🔀 Received mesh signal`);
           const m = message as MeshSignalInbound | MeshSignalOutbound;
           if ('from' in m) {
             void this.handleIncomingMeshSignal(m.from, m.body);
@@ -310,7 +306,6 @@ export class PlayerConnection extends WebRTCConnection {
           break;
         }
         case 'userInfoChange': {
-          console.log(`[PLAYER] 👤 User info change`);
           const m = message as RoomStateChanged;
           const prev = new Map((gameState.room.players ?? []).map((p) => [p.id, p]));
           for (const incoming of m.room.players ?? []) {
@@ -351,14 +346,7 @@ export class PlayerConnection extends WebRTCConnection {
           break;
         }
         case 'roomStateSync': {
-          console.log(
-            `[PLAYER] 📥 Received room state sync with ${(message as RoomStateSync).players?.length || 0} players`
-          );
           const sync = message as RoomStateSync;
-          const playerSummary = (sync.players || [])
-            .map((p) => `${p.name}(mic:${p.mic})`)
-            .join(', ');
-          console.log(`[PLAYER] 👥 Players in sync: ${playerSummary}`);
 
           // Update all player states with the mic status from host
           gameState.room.players = (sync.players ?? []).map((incoming) => {
@@ -371,11 +359,9 @@ export class PlayerConnection extends WebRTCConnection {
               position: old.position // Keep existing position
             };
           });
-          console.log(`[PLAYER] ✅ Updated room state`);
           break;
         }
         case 'positionUpdate':
-          // console.log(`[PLAYER] 📍 Position update from`, message.from);
           gameState.room.players = gameState.room.players?.map((player) => {
             if (player.id === message.from) {
               player.position = message.position;
@@ -384,7 +370,6 @@ export class PlayerConnection extends WebRTCConnection {
           });
           break;
         case 'userLeft':
-          console.log(`[PLAYER] 👋 User left:`, message.user.name);
           logPlayerLeft(message.user);
           gameState.room.players = gameState.room.players?.filter(
             (player) => player.id !== message.user.id
@@ -392,26 +377,19 @@ export class PlayerConnection extends WebRTCConnection {
           this.closeMeshPeer(message.user.id);
           break;
         case 'userJoined': {
-          console.log(`[PLAYER] 👋 User joined:`, message.user.name);
           // Check if user already exists in the list (to avoid duplicates from roomStateSync)
           const existing = gameState.room.players?.find((p) => p.id === message.user.id);
           if (!existing) {
             logPlayerJoined(message.user);
             gameState.room.players = [...(gameState.room.players ?? []), message.user];
-          } else {
-            console.log(
-              `[PLAYER] ℹ️ User ${message.user.id} already in player list, skipping duplicate`
-            );
           }
           if (this.isOtherGuest(message.user.id) && this.userId < message.user.id) {
-            console.log(`[PLAYER] 🔀 Starting mesh with new guest`, message.user.id);
             void this.ensureMeshWithGuest(message.user.id);
           }
           break;
         }
         case 'micToggle': {
           const mt = message as MicToggle;
-          console.log(`[PLAYER] 🔊 Mic toggle from ${mt.from}:`, mt.mic);
           gameState.room.players = gameState.room.players?.map((player) => {
             if (player.id !== mt.from) return player;
             const mic = mt.mic ?? false;
@@ -424,50 +402,52 @@ export class PlayerConnection extends WebRTCConnection {
           break;
         }
         case 'chatMessage': {
-          console.log(`[PLAYER] 💬 Chat message`);
           const c = message as ChatMessage;
           const actor = gameState.room.players?.find((p) => p.id === c.from);
           logChat(actor, c.message, c.time);
           break;
         }
-        default:
-          console.log(`[PLAYER] ❓ Unknown message type:`, (message as { event: string }).event);
       }
     };
     this.peerConnection.channel = dataChannel;
   }
 
   protected async handleIceCandidate() {
-    console.log(`[PLAYER] 🧊 Sending offer to signaling server...`);
+    const offerSdp = this.peerConnection.localDescription?.toJSON();
+
+    // Send as double-stringified JSON (matching original behavior)
+    const sdpString = JSON.stringify(offerSdp);
+
     const response = await fetch(`${PUBLIC_BASE_URL}/api/game/rooms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        sdp: JSON.stringify(this.peerConnection.localDescription?.toJSON()),
+        sdp: sdpString,
         roomId: this.roomId
       })
     });
-    console.log(`[PLAYER] ✅ Offer sent. Waiting for host answer...`);
 
     const roomState: RoomState = await response.json();
-    console.log(`[PLAYER] ✅ Received room state with ${roomState.users.length} players`);
     const hostUser = roomState.users.find((user) => user.is_host);
     if (!hostUser?.sdp) {
-      console.error(`[PLAYER] ❌ Host not found or no SDP!`);
       throw new Error('Host user not found');
     }
-    console.log(`[PLAYER] ✅ Found host, setting remote description`);
+    let answerSdp = hostUser.sdp;
+
+    // Parse SDP if it's a string (backend will have stringified it)
+    if (typeof answerSdp === 'string') {
+      answerSdp = JSON.parse(answerSdp);
+    }
+
     gameState.room.players = roomState.users;
     gameState.room.messages = roomState.messages;
     gameState.room.roomId = this.roomId;
-    console.log(`[PLAYER] ✅ Room state initialized`);
-    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(hostUser.sdp));
-    console.log(`[PLAYER] ✅ Remote description set. Connection in progress...`);
+
+    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answerSdp));
   }
 
   public sendMessage(message: string): void {
-    console.log(`[PLAYER] 💬 Sending message:`, message);
     this.peerConnection.channel?.send(
       JSON.stringify({
         event: 'chatMessage',
@@ -511,55 +491,35 @@ export class PlayerConnection extends WebRTCConnection {
   }
 
   public handleMyMediaStream(stream: MediaStream): void {
-    console.log(`[PLAYER] 🎙️ handleMyMediaStream called, stream id:`, stream.id);
     const audioTrack = stream.getAudioTracks()[0];
-    console.log(`[PLAYER] 🔊 Audio track:`, audioTrack?.id, 'enabled:', audioTrack?.enabled);
 
     if (!audioTrack) {
-      console.warn(`[PLAYER] ⚠️ No audio track found!`);
       return;
     }
 
     audioTrack.enabled = true;
     this.currentMicTrack = audioTrack;
-    console.log(`[PLAYER] ✅ Set current mic track`);
 
-    const hostSender = this.peerConnection
-      .getSenders()
-      .find((sender) => sender.track === null || sender.track?.kind === 'audio');
-    if (hostSender) {
-      console.log(`[PLAYER] ✅ Found host sender, replacing track`);
-      void hostSender
-        .replaceTrack(audioTrack)
-        .then(() => {
-          console.log(`[PLAYER] ✅ Successfully attached mic to host connection`);
-        })
-        .catch((e) => {
-          console.error(`[PLAYER] ❌ Failed to attach mic to host:`, e);
-        });
-    } else {
-      console.warn(`[PLAYER] ⚠️ No host audio sender found!`);
+    if (this.playerAudioSender) {
+      void this.playerAudioSender.replaceTrack(audioTrack);
     }
 
     this.meshPeers.forEach((_pc, peerId) => {
-      console.log(`[PLAYER] 🔀 Attaching mic clone to mesh peer ${peerId}`);
       void this.attachMicCloneToMesh(peerId);
     });
   }
 
   public override clearMicrophoneTracks(): void {
-    console.log(`[PLAYER] 🔇 Clearing microphone tracks`);
     this.currentMicTrack = null;
     this.meshTrackClones.forEach((t) => t.stop());
     this.meshTrackClones.clear();
-    const hostSender = this.peerConnection
-      .getSenders()
-      .find((sender) => sender.track === null || sender.track?.kind === 'audio');
-    void hostSender?.replaceTrack(null);
+
+    if (this.playerAudioSender) {
+      void this.playerAudioSender.replaceTrack(null);
+    }
+
     this.meshPeers.forEach((pc) => {
-      const s = pc
-        .getSenders()
-        .find((sender) => sender.track === null || sender.track?.kind === 'audio');
+      const s = pc.getSenders().find((sender) => sender.track?.kind === 'audio');
       void s?.replaceTrack(null);
     });
   }

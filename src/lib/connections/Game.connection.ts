@@ -90,6 +90,8 @@ class GameConnectionHandler {
     gameState.room.players = gameState.room.players?.map((player) => {
       if (player.id === gameState.userId) {
         player.mic = mic;
+        // IMPORTANT: Also store the actual stream in gameState so guests can receive it
+        player.stream = mic && this._mediaStream ? this._mediaStream : undefined;
       }
       return player;
     });

@@ -11,7 +11,6 @@ import type {
 import {
   displayName,
   logChat,
-  logMic,
   logPlayerJoined,
   logPlayerLeft,
   logRecolor,
@@ -25,140 +24,149 @@ export class HostConnection extends WebRTCConnection {
   private players = new Map<string, RTCPeerConnection>();
   /** One cloned audio track per guest PC — a single track cannot be attached to multiple senders. */
   private hostMicClones = new Map<string, MediaStreamTrack>();
+  /** Store audio senders for each player so we can attach tracks to them later */
+  private playerAudioSenders = new Map<string, RTCRtpSender>();
+  /** Keep audio contexts alive to prevent GC from invalidating dummy tracks */
+  private dummyAudioContexts = new Map<
+    string,
+    {
+      context: AudioContext;
+      oscillator: OscillatorNode;
+      destination: MediaStreamAudioDestinationNode;
+    }
+  >();
+
   constructor(playerId: string, roomId: string) {
     super('host', playerId, roomId);
     window.host = this;
   }
 
   public async handleNewPlayer(playerId: string, offer: RTCSessionDescriptionInit): Promise<void> {
-    console.log(`[HOST] 🎤 handleNewPlayer called for ${playerId}`);
-    const newPeerConnection = this.createNewPeerConnection(playerId);
-    console.log(`[HOST] ✅ Peer connection created for ${playerId}`);
+    // Create dummy track first
+    const dummyTrack = await this.createDummyAudioTrack(playerId);
+    if (!dummyTrack) {
+      console.error(`[HOST] ❌ Failed to create dummy track for ${playerId}`);
+      return;
+    }
 
+    const newPeerConnection = new RTCPeerConnection(DEFAULT_RTC_CONFIGURATION);
+
+    // Process the offer — browser automatically creates a recvonly transceiver for the audio m-line
     await newPeerConnection.setRemoteDescription(offer);
-    console.log(`[HOST] ✅ Remote description set for ${playerId}`);
+
+    // ✅ FIX: Reuse the transceiver the browser just created from the offer instead of adding a
+    // new orphaned one. Adding a second transceiver after setRemoteDescription means it has no
+    // matching m-line in the offer, so createAnswer() leaves the first transceiver as recvonly
+    // and the guest never receives a=sendrecv → ontrack never fires on the guest side.
+    const audioTransceiver = newPeerConnection
+      .getTransceivers()
+      .find((t) => t.receiver.track.kind === 'audio');
+
+    if (audioTransceiver) {
+      await audioTransceiver.sender.replaceTrack(dummyTrack);
+      audioTransceiver.direction = 'sendrecv';
+      this.playerAudioSenders.set(playerId, audioTransceiver.sender);
+    } else {
+      // Fallback: no audio transceiver from offer (shouldn't happen with a sendrecv offer)
+      console.warn(
+        `[HOST] ⚠️ No audio transceiver found from offer, adding new one for ${playerId}`
+      );
+      const transceiver = newPeerConnection.addTransceiver(dummyTrack, { direction: 'sendrecv' });
+      this.playerAudioSenders.set(playerId, transceiver.sender);
+    }
+
+    // Set up event listeners BEFORE creating answer
+    this.addEventListenersToNewPeerConnection(newPeerConnection, playerId);
 
     const answer = await newPeerConnection.createAnswer();
-    console.log(`[HOST] ✅ Answer created for ${playerId}`);
 
     await newPeerConnection.setLocalDescription(answer);
-    console.log(`[HOST] ✅ Local description set for ${playerId}`);
-
     await waitForIceGatheringComplete(newPeerConnection);
-    console.log(`[HOST] ✅ ICE gathering complete for ${playerId}`);
 
-    const sdp = newPeerConnection.localDescription?.toJSON();
-    console.log(`[HOST] 📤 Sending answer SDP to server for ${playerId}`);
+    const sdpString = JSON.stringify(newPeerConnection.localDescription?.toJSON());
+
+    // Store the peer connection BEFORE sending answer
+    this.players.set(playerId, newPeerConnection);
 
     await fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sdp, playerId })
+      body: JSON.stringify({ sdp: sdpString, playerId })
     });
-    console.log(`[HOST] ✅ Answer sent to server for ${playerId}`);
   }
 
-  private createNewPeerConnection(playerId: string): RTCPeerConnection {
-    console.log(`[HOST] 🔗 Creating RTCPeerConnection for ${playerId}`);
-    const peerConnection = new RTCPeerConnection(DEFAULT_RTC_CONFIGURATION);
+  private async createDummyAudioTrack(playerId: string): Promise<MediaStreamTrack | null> {
+    try {
+      const audioContext = new (
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      )();
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const destination = audioContext.createMediaStreamDestination();
 
-    // Add audio transceiver so we can send/receive audio from this player
-    peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    console.log(`[HOST] ✅ Added audio transceiver for ${playerId}`);
+      gain.gain.value = 0;
+      oscillator.connect(gain);
+      gain.connect(destination);
+      oscillator.start();
+
+      // Store references to prevent garbage collection
+      this.dummyAudioContexts.set(playerId, { context: audioContext, oscillator, destination });
+
+      const track = destination.stream.getAudioTracks()[0];
+      return track ?? null;
+    } catch (e) {
+      console.error(`[HOST] ❌ Error creating dummy track:`, e);
+      return null;
+    }
+  }
+
+  private addEventListenersToNewPeerConnection(
+    peerConnection: RTCPeerConnection,
+    playerId: string
+  ) {
+    peerConnection.ontrack = (event) => {
+      const mediaStream = event.streams[0] ?? new MediaStream([event.track]);
+      this.mediaStreams.set(playerId, mediaStream);
+    };
 
     peerConnection.ondatachannel = (event) => {
-      console.log(`[HOST] 📡 Data channel received from ${playerId}`);
       const dataChannel = event.channel;
       peerConnection.channel = dataChannel;
       this.addEventListenersToNewPeer(dataChannel, playerId);
     };
-
-    peerConnection.ontrack = (event) => {
-      console.log(`[HOST] 🔊 Received track from ${playerId}:`, event.track.kind, event.track.id);
-      const mediaStream = event.streams[0] ?? new MediaStream([event.track]);
-      this.mediaStreams.set(playerId, mediaStream);
-      console.log(
-        `[HOST] ✅ Media stream saved for ${playerId}`,
-        mediaStream.id,
-        'tracks:',
-        mediaStream.getTracks().length
-      );
-    };
-
-    peerConnection.onconnectionstatechange = () => {
-      console.log(
-        `[HOST] 🔄 Connection state changed for ${playerId}:`,
-        peerConnection.connectionState
-      );
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-      console.log(
-        `[HOST] 🧊 ICE connection state for ${playerId}:`,
-        peerConnection.iceConnectionState
-      );
-    };
-
-    this.players.set(playerId, peerConnection);
-    console.log(`[HOST] ✅ Peer connection stored. Total players: ${this.players.size}`);
-    return peerConnection;
   }
 
   private addEventListenersToNewPeer(dataChannel: RTCDataChannel, playerId: string) {
-    console.log(`[HOST] 📡 Adding event listeners to data channel for ${playerId}`);
-
     dataChannel.onopen = async () => {
-      console.log(`[HOST] ✅ DATA CHANNEL OPENED for ${playerId}`);
       this.hasDataChannel = true;
 
       const newAddedUserToDbRes = await fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          roomId: this.roomId,
-          playerId
-        })
+        body: JSON.stringify({ roomId: this.roomId, playerId })
       });
       const newAddedUserToDb: UserClient = await newAddedUserToDbRes.json();
-      console.log(
-        `[HOST] ✅ Player added to database:`,
-        newAddedUserToDb.id,
-        newAddedUserToDb.name
-      );
 
       gameState.room.players = [...(gameState.room.players ?? []), newAddedUserToDb];
       logPlayerJoined(newAddedUserToDb);
 
       // If host has already enabled their microphone, attach it to this new player
       if (this.hostMicClones.size > 0) {
-        console.log(`[HOST] 🎙️ Host has active mic, attaching to new player ${playerId}`);
-        const peerConnection = this.players.get(playerId);
-        if (peerConnection) {
+        const audioSender = this.playerAudioSenders.get(playerId);
+        if (audioSender) {
           const hostTrack = Array.from(this.hostMicClones.values())[0];
           if (hostTrack) {
             const clone = hostTrack.clone();
             this.hostMicClones.set(playerId, clone);
-            const audioSender = peerConnection
-              .getSenders()
-              .find((sender) => sender.track === null || sender.track?.kind === 'audio');
-            if (audioSender) {
-              console.log(`[HOST] ✅ Attached existing host mic to ${playerId}`);
-              void audioSender.replaceTrack(clone).catch((e) => {
-                console.error(`[HOST] ❌ Failed to attach mic to ${playerId}:`, e);
-              });
-            }
+            await audioSender.replaceTrack(clone);
           }
         }
       }
 
-      // Send full room state to the newly joined player so they know everyone's mic status
-      console.log(`[HOST] 📤 Sending room state sync to ${playerId}`);
       this.sendRoomStateToPlayer(playerId);
-
-      // send room state to all players except the one who just joined (they already got it via roomStateSync)
-      console.log(`[HOST] 📢 Broadcasting userJoined to all players except ${playerId}`);
       this.broadcastToPlayers(
         {
           event: 'userJoined',
@@ -172,22 +180,19 @@ export class HostConnection extends WebRTCConnection {
     };
 
     dataChannel.onclose = () => {
-      console.log(`[HOST] ❌ DATA CHANNEL CLOSED for ${playerId}`);
       this.handleRemovePlayer(playerId);
     };
 
     dataChannel.onerror = (error) => {
-      console.error(`[HOST] ⚠️ Data channel error for ${playerId}:`, error);
+      console.error(`[HOST] ❌ Data channel error for ${playerId}:`, error);
     };
 
     dataChannel.onmessage = (message) => {
       const parsedRtcMessage = JSON.parse(message.data) as RTCMessage;
-      // console.log(`[HOST] 📨 Message from ${playerId}:`, parsedRtcMessage.event);
 
       if (parsedRtcMessage.event === 'meshSignal' && 'to' in parsedRtcMessage) {
         const relay = parsedRtcMessage as MeshSignalOutbound;
         if (relay.to !== playerId && this.players.has(relay.to)) {
-          console.log(`[HOST] 🔀 Relaying mesh signal from ${playerId} to ${relay.to}`);
           const inbound: RTCMessage = {
             event: 'meshSignal',
             from: playerId,
@@ -198,9 +203,19 @@ export class HostConnection extends WebRTCConnection {
         }
         return;
       }
+
       switch (parsedRtcMessage.event) {
+        case 'micToggle':
+          for (const player of gameState.room.players || []) {
+            if (player.id === playerId) {
+              player.mic = (parsedRtcMessage as MicToggle).mic;
+              player.stream = player.mic ? this.mediaStreams.get(playerId) : undefined;
+              break;
+            }
+          }
+          this.broadcastToPlayers(parsedRtcMessage, { excludePlayerId: playerId });
+          break;
         case 'positionUpdate':
-          // console.log(`[HOST] 📍 Position update from ${playerId}`);
           for (const player of gameState.room.players || []) {
             if (player.id === playerId) {
               player.position = (parsedRtcMessage as positionUpdate).position;
@@ -209,8 +224,16 @@ export class HostConnection extends WebRTCConnection {
           }
           this.broadcastToPlayers(parsedRtcMessage, { excludePlayerId: playerId });
           break;
+        case 'chatMessage': {
+          const chat = parsedRtcMessage as ChatMessage;
+          if (chat.from === playerId) {
+            const actor = gameState.room.players?.find((p) => p.id === playerId);
+            logChat(actor, chat.message, chat.time);
+            this.broadcastToPlayers(chat);
+          }
+          break;
+        }
         case 'userInfoChange': {
-          console.log(`[HOST] 👤 User info change from ${playerId}`);
           const msg = parsedRtcMessage as RoomStateChanged;
           if (msg.user.id !== playerId) break;
           const oldRow = gameState.room.players?.find((p) => p.id === msg.user.id);
@@ -241,61 +264,16 @@ export class HostConnection extends WebRTCConnection {
           });
           break;
         }
-        case 'micToggle':
-          console.log(
-            `[HOST] 🔊 Mic toggle from ${playerId}:`,
-            (parsedRtcMessage as MicToggle).mic
-          );
-          for (const player of gameState.room.players || []) {
-            if (player.id === playerId) {
-              player.mic = (parsedRtcMessage as MicToggle).mic;
-              player.stream = player.mic ? this.mediaStreams.get(playerId) : undefined;
-              console.log(
-                `[HOST] ✅ Updated ${playerId} mic state. Has stream: ${!!player.stream}`
-              );
-              break;
-            }
-          }
-          {
-            const row = gameState.room.players?.find((p) => p.id === playerId);
-            if (row) logMic(row, (parsedRtcMessage as MicToggle).mic ?? false);
-          }
-          this.broadcastToPlayers(parsedRtcMessage, { excludePlayerId: playerId });
-          break;
-        case 'chatMessage': {
-          console.log(`[HOST] 💬 Chat message from ${playerId}`);
-          const chat = parsedRtcMessage as ChatMessage;
-          if (chat.from !== playerId) break;
-          const actor = gameState.room.players?.find((p) => p.id === playerId);
-          logChat(actor, chat.message, chat.time);
-          this.broadcastToPlayers(chat);
-          break;
-        }
-        default:
-          console.log(`[HOST] ❓ Unknown message type from ${playerId}:`, parsedRtcMessage.event);
-          break;
       }
     };
   }
 
   private broadcastToPlayers(msg?: RTCMessage, options?: { excludePlayerId?: string }) {
-    // console.log(
-    //   `[HOST] 📢 Broadcasting to ${this.players.size} players (excluding: ${options?.excludePlayerId || 'none'})`
-    // );
     this.players.forEach((peerConnection, playerId) => {
-      if (options?.excludePlayerId && options.excludePlayerId === playerId) {
-        // console.log(`[HOST] ⏭️  Skipping excluded player ${playerId}`);
-        return;
-      }
+      if (options?.excludePlayerId && options.excludePlayerId === playerId) return;
       try {
         if (peerConnection.channel?.readyState === 'open') {
           peerConnection.channel?.send(JSON.stringify(msg));
-          // console.log(`[HOST] ✅ Sent to ${playerId}`);
-        } else {
-          console.warn(
-            `[HOST] ⚠️ Channel not open for ${playerId}:`,
-            peerConnection.channel?.readyState
-          );
         }
       } catch (e) {
         console.error(`[HOST] ❌ Error sending to ${playerId}:`, e);
@@ -307,11 +285,6 @@ export class HostConnection extends WebRTCConnection {
     try {
       if (this.players.get(playerId)?.channel?.readyState === 'open') {
         this.players.get(playerId)?.channel?.send(JSON.stringify(msg));
-        console.log(`[HOST] ✅ Sent message to specific player ${playerId}:`, msg?.event);
-      } else {
-        console.warn(
-          `[HOST] ⚠️ Cannot send to ${playerId}: channel is ${this.players.get(playerId)?.channel?.readyState}`
-        );
       }
     } catch (e) {
       console.error(`[HOST] ❌ Error sending to player ${playerId}:`, e);
@@ -319,21 +292,14 @@ export class HostConnection extends WebRTCConnection {
   }
 
   private sendRoomStateToPlayer(playerId: string) {
-    if (!gameState.room.players) {
-      console.warn(`[HOST] ⚠️ No players in room state when trying to sync to ${playerId}`);
-      return;
-    }
-
-    // Send current state of all players (with mic status) to the newly joined player
-    const playerSummary = gameState.room.players.map((p) => `${p.name}(mic:${p.mic})`).join(', ');
-    console.log(`[HOST] 📤 Sending room state sync to ${playerId}. Players: ${playerSummary}`);
+    if (!gameState.room.players) return;
 
     const stateMessage: RoomStateSync = {
       event: 'roomStateSync',
       from: gameState.userId,
       players: gameState.room.players.map((p) => ({
         ...p,
-        stream: undefined // Don't send actual streams, just metadata
+        stream: undefined
       })),
       time: Date.now()
     };
@@ -352,8 +318,10 @@ export class HostConnection extends WebRTCConnection {
       })
     });
     const disconnectedUser: UserClient = await disconnectedUserRes.json();
-    // const newRemovedUser: UserClient = await newRemovedUserRes.json();
     this.players.delete(playerId);
+    this.playerAudioSenders.delete(playerId);
+    this.hostMicClones.delete(playerId);
+    this.dummyAudioContexts.delete(playerId);
     if (this.players.size === 0) this.hasDataChannel = false;
     logPlayerLeft(disconnectedUser);
     gameState.room.players = gameState.room.players?.filter((user) => user.id !== playerId);
@@ -423,7 +391,6 @@ export class HostConnection extends WebRTCConnection {
 
   /** Notify all guests when the host toggles microphone (UI + mute state). */
   public broadcastHostMicState(mic: boolean): void {
-    console.log(`[HOST] 🎤 Broadcasting host mic state:`, mic, `to ${this.players.size} players`);
     this.broadcastToPlayers({
       event: 'micToggle',
       mic,
@@ -433,52 +400,36 @@ export class HostConnection extends WebRTCConnection {
   }
 
   /**
-   * host should just add their media stream to all players tracks
+   * Replace dummy tracks with the host's real microphone track on all guest connections.
    */
   public handleMyMediaStream(stream: MediaStream): void {
-    console.log(`[HOST] 🎤 handleMyMediaStream called, stream id:`, stream.id);
     const track = stream.getAudioTracks()[0];
-    console.log(`[HOST] 🔊 Audio track:`, track?.id, 'enabled:', track?.enabled);
     if (!track) {
       console.warn(`[HOST] ⚠️ No audio tracks found in stream!`);
       return;
     }
 
     this.clearMicrophoneTracks();
-    console.log(`[HOST] ✅ Cleared previous mic tracks`);
 
     this.players.forEach((peerConnection, pid) => {
-      console.log(`[HOST] 🔗 Attaching mic track to peer ${pid}`);
+      const audioSender = this.playerAudioSenders.get(pid);
+      if (!audioSender) return;
+
       const clone = track.clone();
       this.hostMicClones.set(pid, clone);
-      const audioSender = peerConnection
-        .getSenders()
-        .find((sender) => sender.track === null || sender.track?.kind === 'audio');
-      if (audioSender) {
-        console.log(`[HOST] ✅ Found audio sender for ${pid}, replacing track`);
-        void audioSender
-          .replaceTrack(clone)
-          .then(() => {
-            console.log(`[HOST] ✅ Successfully replaced track for ${pid}`);
-          })
-          .catch((e) => {
-            console.error(`[HOST] ❌ Failed to replace track for ${pid}:`, e);
-          });
-      } else {
-        console.warn(`[HOST] ⚠️ No audio sender found for ${pid}`);
-      }
+      audioSender.replaceTrack(clone).catch((e) => {
+        console.error(`[HOST] ❌ Failed to attach mic to ${pid}:`, e);
+      });
     });
-    console.log(`[HOST] ✅ Attached mic to ${this.players.size} players`);
   }
 
   public override clearMicrophoneTracks(): void {
     this.hostMicClones.forEach((t) => t.stop());
     this.hostMicClones.clear();
-    this.players.forEach((peerConnection) => {
-      const audioSender = peerConnection
-        .getSenders()
-        .find((sender) => sender.track === null || sender.track?.kind === 'audio');
-      void audioSender?.replaceTrack(null);
+    this.playerAudioSenders.forEach((audioSender) => {
+      void audioSender.replaceTrack(null).catch((e) => {
+        console.error(`[HOST] ❌ Failed to clear track:`, e);
+      });
     });
   }
 }

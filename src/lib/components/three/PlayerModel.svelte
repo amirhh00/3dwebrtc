@@ -27,22 +27,16 @@
 
   // Check if stream is valid and has audio tracks
   let isStreamReady = $state(false);
+  let currentStreamId = $state<string | null>(null);
+  let isPlaying = $state(false);
 
   $effect(() => {
     const player = gameState.room.players?.find((p) => p.id === playerId);
     if (player?.stream) {
       const audioTracks = player.stream.getAudioTracks();
-      isStreamReady = audioTracks.length > 0 && audioTracks[0]?.readyState === 'live';
-      if (isStreamReady) {
-        console.log(
-          `[AUDIO] ✅ Stream ready for ${playerId}. Tracks: ${audioTracks.length}, state: ${audioTracks[0]?.readyState}`
-        );
-      } else {
-        console.warn(
-          `[AUDIO] ⚠️ Stream not ready for ${playerId}. Tracks: ${audioTracks.length}, state: ${audioTracks[0]?.readyState}`
-        );
-        isStreamReady = false;
-      }
+      const hasAudio = audioTracks.length > 0;
+      const trackReady = hasAudio && audioTracks[0]?.readyState === 'live';
+      isStreamReady = trackReady;
     } else {
       isStreamReady = false;
     }
@@ -52,16 +46,34 @@
     if (audioElement && playerId !== gameState.userId) {
       const player = gameState.room.players?.find((p) => p.id === playerId);
       if (player?.mic && isStreamReady && player.stream) {
-        console.log(`[AUDIO] 🎧 Setting stream to audio element for ${playerId}`);
-        audioElement.srcObject = player.stream;
-        console.log(`[AUDIO] ▶️ Playing audio for ${playerId}`);
-        void audioElement.play().catch((e) => {
-          console.error(`[AUDIO] ❌ Failed to play audio for ${playerId}:`, e);
-        });
+        // Only set source and play if stream changed
+        const streamId = player.stream.id;
+        if (currentStreamId !== streamId) {
+          audioElement.pause();
+          audioElement.srcObject = player.stream;
+          currentStreamId = streamId;
+          isPlaying = false;
+          
+          // Only play after a brief delay to ensure source is set
+          setTimeout(() => {
+            if (audioElement && audioElement.srcObject === player.stream) {
+              void audioElement.play()
+                .then(() => {
+                  isPlaying = true;
+                })
+                .catch((e) => {
+                  isPlaying = false;
+                });
+            }
+          }, 0);
+        }
       } else {
-        console.log(`[AUDIO] ⏸️ Stopping audio for ${playerId}`);
-        audioElement.pause();
-        audioElement.srcObject = null;
+        if (audioElement.srcObject) {
+          audioElement.pause();
+          audioElement.srcObject = null;
+          currentStreamId = null;
+          isPlaying = false;
+        }
       }
     }
   });
@@ -85,7 +97,6 @@
       autoplay
       muted={false}
       crossorigin="anonymous"
-      onerror={(e) => console.warn('[audio] Audio element error:', e)}
     ></audio>
   {/if}
 </T.Mesh>

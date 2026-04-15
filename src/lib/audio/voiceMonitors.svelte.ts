@@ -1,4 +1,6 @@
-import { AudioContext } from 'three';
+// ✅ FIX: Use the native browser AudioContext, NOT Three.js's AudioContext wrapper.
+// Three.js's AudioContext.getContext() ties the audio graph to Three's lifecycle and
+// can produce a stale/suspended context after a scene reload, breaking voice detection.
 import type { UserClient } from '$lib/store/game.svelte';
 import { audioUi, gameState } from '$lib/store/game.svelte';
 
@@ -10,14 +12,29 @@ export const voiceActivity = $state({
 let lastSig = '';
 const stoppers: (() => void)[] = [];
 
+/** Module-level AudioContext singleton — reused across all monitors to stay within browser limits. */
+let sharedAudioContext: AudioContext | null = null;
+
+function getAudioContext(): AudioContext {
+  if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
+    sharedAudioContext = new (
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    )();
+  }
+  // Resume if suspended (browsers suspend AudioContext until a user gesture)
+  if (sharedAudioContext.state === 'suspended') {
+    void sharedAudioContext.resume();
+  }
+  return sharedAudioContext;
+}
+
 function setSpeaking(userId: string, active: boolean) {
   if (active) {
     if (voiceActivity.speaking[userId]) return;
-    console.log(`[VOICE] 🔊 ${userId} started speaking`);
     voiceActivity.speaking = { ...voiceActivity.speaking, [userId]: true };
   } else {
     if (!voiceActivity.speaking[userId]) return;
-    console.log(`[VOICE] 🔇 ${userId} stopped speaking`);
     const next = { ...voiceActivity.speaking };
     delete next[userId];
     voiceActivity.speaking = next;
@@ -25,16 +42,14 @@ function setSpeaking(userId: string, active: boolean) {
 }
 
 function startLevelMonitor(userId: string, stream: MediaStream): () => void {
-  console.log(`[VOICE] 📊 Starting level monitor for ${userId}`);
   const raw = stream.getAudioTracks()[0];
   if (!raw || raw.readyState === 'ended') {
-    console.warn(`[VOICE] ⚠️ Track not ready for ${userId}`);
     return () => {};
   }
 
   const track = raw.clone();
   const ms = new MediaStream([track]);
-  const ctx = AudioContext.getContext();
+  const ctx = getAudioContext(); // ✅ use native browser AudioContext singleton
   let src: MediaStreamAudioSourceNode | null = null;
   let analyser: AnalyserNode | null = null;
   let raf = 0;
@@ -44,9 +59,8 @@ function startLevelMonitor(userId: string, stream: MediaStream): () => void {
     analyser.fftSize = 512;
     analyser.smoothingTimeConstant = 0.45;
     src.connect(analyser);
-    console.log(`[VOICE] ✅ Analyser connected for ${userId}`);
-  } catch (e) {
-    console.error('[VOICE] ❌ failed to attach analyser', userId, e);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (err) {
     track.stop();
     return () => {};
   }
@@ -109,13 +123,9 @@ export function resyncVoiceMonitors(
 ): () => void {
   const sig = `${selfId}|${localMic?.id ?? ''}|${(players ?? []).map((p) => `${p.id}:${p.stream?.id ?? ''}`).join('|')}`;
   if (sig === lastSig) {
-    console.log(`[VOICE] ⏭️ Voice monitor signature unchanged, skipping resync`);
     return () => {};
   }
 
-  console.log(
-    `[VOICE] 🔄 Resyncing voice monitors. Players: ${players?.length ?? 0}, has local mic: ${!!localMic}`
-  );
   lastSig = sig;
   stopAllMonitors();
 
@@ -123,19 +133,13 @@ export function resyncVoiceMonitors(
     if (p.id === selfId) continue;
     const t = p.stream?.getAudioTracks()[0];
     if (t && t.readyState === 'live') {
-      console.log(`[VOICE] ✅ Starting monitor for remote player ${p.id}`);
       stoppers.push(startLevelMonitor(p.id, p.stream!));
-    } else {
-      console.log(`[VOICE] ⏭️ Skipping ${p.id} - no stream or track not live`);
     }
   }
 
   const lt = localMic?.getAudioTracks()[0];
   if (lt && lt.readyState === 'live') {
-    console.log(`[VOICE] ✅ Starting monitor for local mic`);
     stoppers.push(startLevelMonitor(selfId, localMic!));
-  } else if (localMic) {
-    console.log(`[VOICE] ⏭️ Local mic exists but track not live`);
   }
 
   return () => {
