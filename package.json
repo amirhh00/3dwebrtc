@@ -30,7 +30,6 @@
     "prettier-plugin-svelte": "^3.3.2",
     "prettier-plugin-tailwindcss": "^0.6.9",
     "svelte": "^5.7.0",
-    "svelte-adapter-bun": "^1.0.1",
     "svelte-check": "^4.1.1",
     "svelte-sonner": "^0.3.28",
     "tailwind-merge": "^2.5.5",
@@ -43,6 +42,7 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
+    "@sveltejs/adapter-static": "^3.0.10",
     "@threlte/core": "next",
     "@threlte/extras": "next",
     "@threlte/rapier": "next",
