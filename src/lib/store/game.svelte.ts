@@ -5,13 +5,15 @@ export const micState = writable(false);
 
 export const playerInfo = $state({
   playerName: '',
-  playerColor: '#000'
+  playerColor: '#000',
+  health: 100
 });
 
 export type UserClient = UserServer & {
   position?: number | [x: number, y: number, z: number];
   mic?: boolean;
   stream?: MediaStream;
+  health?: number;
 };
 export interface Room extends SeekRoom {
   players?: UserClient[];

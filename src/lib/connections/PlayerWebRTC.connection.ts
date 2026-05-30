@@ -407,6 +407,18 @@ export class PlayerConnection extends WebRTCConnection {
           logChat(actor, c.message, c.time);
           break;
         }
+        case 'gameEvent': {
+          const ge = message as any;
+          if (ge.data?.type === 'playerDamaged') {
+            // Handle player damage
+            const { targetId, damage } = ge.data;
+            const targetPlayer = gameState.room.players?.find((p) => p.id === targetId);
+            if (targetPlayer) {
+              targetPlayer.health = Math.max(0, (targetPlayer.health || 100) - damage);
+            }
+          }
+          break;
+        }
       }
     };
     this.peerConnection.channel = dataChannel;
@@ -463,6 +475,17 @@ export class PlayerConnection extends WebRTCConnection {
       JSON.stringify({
         event: 'positionUpdate',
         position: [x, y, z],
+        from: gameState.userId,
+        time: new Date().getTime()
+      } satisfies RTCMessage)
+    );
+  }
+
+  public sendGameEvent(event: any): void {
+    this.peerConnection.channel?.send(
+      JSON.stringify({
+        event: 'gameEvent',
+        data: event,
         from: gameState.userId,
         time: new Date().getTime()
       } satisfies RTCMessage)

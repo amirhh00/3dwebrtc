@@ -13,6 +13,12 @@
   let audioElement = $state<HTMLAudioElement>();
   const { camera } = useThrelte();
 
+  $effect(() => {
+    if (modelMesh) {
+      modelMesh.userData.playerId = playerId;
+    }
+  });
+
   useTask(() => {
     tref?.lookAt(camera.current.position.x, height, camera.current.position.z);
     if (playerId !== gameState.userId) {
@@ -81,7 +87,7 @@
 
 <T.Mesh bind:ref={modelMesh as any} {...meshProps as any}>
   <T.Group bind:ref={tref}>
-    <HTML zIndexRange={[0, 1]} center pointerEvents="none" transform position.y={height}>
+    <HTML zIndexRange={[0, 1]} center pointerEvents="none" transform position.y={height} rotation-x={-Math.PI / 2}>
       <p class="text-xs">
         {!!playerName ? playerName : playerId}
       </p>

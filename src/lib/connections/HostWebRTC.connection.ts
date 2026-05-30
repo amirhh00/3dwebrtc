@@ -264,6 +264,20 @@ export class HostConnection extends WebRTCConnection {
           });
           break;
         }
+        case 'gameEvent': {
+          const msg = parsedRtcMessage as any;
+          if (msg.data?.type === 'playerDamaged') {
+            // Handle player damage
+            const { targetId, damage } = msg.data;
+            const targetPlayer = gameState.room.players?.find((p) => p.id === targetId);
+            if (targetPlayer) {
+              targetPlayer.health = Math.max(0, (targetPlayer.health || 100) - damage);
+            }
+          }
+          // Broadcast game event to all players
+          this.broadcastToPlayers(msg);
+          break;
+        }
       }
     };
   }
@@ -354,6 +368,15 @@ export class HostConnection extends WebRTCConnection {
       event: 'positionUpdate',
       from: gameState.userId,
       position: [x, y, z],
+      time: new Date().getTime()
+    });
+  }
+
+  public sendGameEvent(event: any): void {
+    this.broadcastToPlayers({
+      event: 'gameEvent',
+      from: gameState.userId,
+      data: event,
       time: new Date().getTime()
     });
   }

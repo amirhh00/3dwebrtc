@@ -16,6 +16,7 @@
   }
 
   const { user }: MainMenuProps = $props();
+  let isPointerLocked = $state(false);
 
   onMount(() => {
     if (browser) {
@@ -23,6 +24,15 @@
       playerInfo.playerColor = user.color || '#000000';
       gameState.userId = user.id;
     }
+
+    const handlePointerLockChange = () => {
+      isPointerLocked = document.pointerLockElement !== null;
+    };
+
+    document.addEventListener('pointerlockchange', handlePointerLockChange);
+    return () => {
+      document.removeEventListener('pointerlockchange', handlePointerLockChange);
+    };
   });
 </script>
 
@@ -31,6 +41,15 @@
   <MainMenu />
 
   <div class="h-full w-full">
+    {#if !isPointerLocked}
+      <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+        <div class="bg-black bg-opacity-50 text-white px-4 py-2 rounded text-center pointer-events-auto">
+          <p class="text-sm mb-2">Click to look around with mouse</p>
+          <p class="text-xs opacity-75">Press ESC to unlock cursor</p>
+        </div>
+      </div>
+    {/if}
+    
     <Canvas>
       <!-- {#if dev}
         <PerfMonitor anchorY="bottom" />

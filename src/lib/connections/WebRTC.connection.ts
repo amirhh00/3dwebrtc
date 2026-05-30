@@ -27,6 +27,12 @@ export abstract class WebRTCConnection {
   public abstract sendPositionUpdate(x: number, y: number, z: number): void;
 
   /**
+   * Send a game event to the other peer(s)
+   * @param event The game event to send
+   */
+  public abstract sendGameEvent(event: any): void;
+
+  /**
    * Send a message to the other peer
    * @param message The message to send to the other peer
    */

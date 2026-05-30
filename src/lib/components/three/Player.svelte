@@ -3,6 +3,7 @@
   import { T, useTask } from '@threlte/core';
   import { RigidBody, CollisionGroups, Collider } from '@threlte/rapier';
   import ThirdPersonControls from './ThirdPersonControls.svelte';
+  import Gun from './Gun.svelte';
   import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
   import type { Group, Mesh } from 'three';
   import { playerInfo, gameState } from '$lib/store/game.svelte';
@@ -31,10 +32,26 @@
 
   const temp = new Vector3();
 
+  // Initialize health
+  $effect(() => {
+    if (gameState.room.roomId) {
+      playerInfo.health = 100;
+      
+      // Initialize health for all players in the room
+      if (gameState.room.players) {
+        gameState.room.players.forEach((player) => {
+          if (!player.health) {
+            player.health = 100;
+          }
+        });
+      }
+    }
+  });
+
   useTask(() => {
     if (!rigidBody || !capsule) return;
     // get direction
-    const velVec = temp.fromArray([0, 0, forward - backward]); // left - right
+    const velVec = temp.fromArray([left - right, 0, forward - backward]);
     // sort rotate and multiply by speed
     velVec.applyEuler(new Euler().copy(capsule.rotation)).multiplyScalar(speed);
 
@@ -84,7 +101,8 @@
     if (document.activeElement?.tagName === 'INPUT') return;
     if (!rigidBody) return;
     const isOnAir = rigidBody.linvel().y > 0.001 || rigidBody.linvel().y < -0.001;
-    switch (e.key) {
+    const key = e.key.toLowerCase();
+    switch (key) {
       case 's':
         backward = isOnAir ? 0.05 : 1;
         break;
@@ -106,7 +124,8 @@
   }
 
   function onKeyUp(e: KeyboardEvent) {
-    switch (e.key) {
+    const key = e.key.toLowerCase();
+    switch (key) {
       case 's':
         backward = 0;
         break;
@@ -132,7 +151,7 @@
     <ThirdPersonControls bind:object={capsule} />
   {/if}
   <AudioListener id="al" />
-  <!-- <PointerLockControls bind:lock /> -->
+  <Gun />
 </T.PerspectiveCamera>
 
 <T.Group bind:ref={capsule} {position}>
