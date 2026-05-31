@@ -7,7 +7,7 @@
   } from '$lib/audio/voiceMonitors.svelte';
 
   function unlockAudio() {
-    void AudioContext.getContext().resume();
+    void (AudioContext.getContext() as any).resume();
   }
 
   onMount(() => {

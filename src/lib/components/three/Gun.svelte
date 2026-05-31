@@ -1,6 +1,6 @@
 <script lang="ts">
   import { T, useTask, useThrelte } from '@threlte/core';
-  import { BoxGeometry, MeshBasicMaterial, Vector3, Raycaster, Mesh, BufferGeometry, LineBasicMaterial, Line } from 'three';
+  import { BoxGeometry, MeshBasicMaterial, MeshStandardMaterial, Vector3, Raycaster, Mesh, BufferGeometry, LineBasicMaterial, Line } from 'three';
   import { gameState, playerInfo } from '$lib/store/game.svelte';
   import { gameConnection } from '$lib/connections/Game.connection';
 
@@ -118,7 +118,7 @@
   function createMuzzleFlash() {
     // Large bright muzzle flash at gun barrel position
     const flashGeom = new BoxGeometry(0.1, 0.1, 0.2);
-    const flashMat = new MeshBasicMaterial({ color: 0xff6600, emissive: 0xff3300 });
+    const flashMat = new MeshStandardMaterial({ color: 0xff6600, emissive: 0xff3300 });
     
     // Gun barrel is at camera position + offset [0.3, -0.2, -0.5]
     const pos = camera.current.position.clone().add(new Vector3(0.3, -0.2, -0.5));
@@ -146,7 +146,7 @@
   function createImpactPoint(position: Vector3) {
     // Impact sphere
     const impactGeom = new BoxGeometry(0.2, 0.2, 0.2);
-    const impactMat = new MeshBasicMaterial({ color: 0xffff00, emissive: 0xffff00 });
+    const impactMat = new MeshStandardMaterial({ color: 0xffff00, emissive: 0xffff00 });
     
     const impact = new Mesh(impactGeom, impactMat);
     impact.position.copy(position);

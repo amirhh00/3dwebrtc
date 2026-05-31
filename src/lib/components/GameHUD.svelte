@@ -2,10 +2,12 @@
   import { playerInfo, gameState } from '$lib/store/game.svelte';
 
   // This will be updated by the Gun component when needed
-  export let ammo = $state(30);
-  export let maxAmmo = 30;
-  export let isReloading = $state(false);
-  export let reloadProgress = $state(0);
+  let {
+    ammo = $bindable(30),
+    maxAmmo = 30,
+    isReloading = $bindable(false),
+    reloadProgress = $bindable(0)
+  } = $props();
 </script>
 
 <!-- HUD: Health and Ammo counter -->

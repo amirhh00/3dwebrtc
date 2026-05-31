@@ -15,7 +15,7 @@
   const { renderer, invalidate } = useThrelte();
 
   const domElement = renderer.domElement;
-  const camera = useParent() as Writable<Camera>;
+  const camera = useParent() as unknown as Writable<Camera>;
   const dispatch = createEventDispatcher();
 
   const _euler = new Euler(0, 0, 0, 'YXZ');

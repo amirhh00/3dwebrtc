@@ -1,28 +1,22 @@
 <script lang="ts">
   import { Button as ButtonPrimitive } from 'bits-ui';
-  import { type Events, type Props, buttonVariants } from './index.js';
+  import { type Props, buttonVariants } from './index.js';
   import { cn } from '$lib/utils.js';
 
-  type $$Props = Props;
-  type $$Events = Events;
-
-  let className: $$Props['class'] = '';
-  export let variant: $$Props['variant'] = 'default';
-  export let size: $$Props['size'] = 'default';
-  export let builders: $$Props['builders'] = [];
-  export { className as class };
-
-  // @ts-expect-error - computedClass is a string, but cn can return a string or an array of strings
-  $: computedClass = cn(buttonVariants({ variant, size, className })) as string;
+  let {
+    class: className = '',
+    variant = 'default',
+    size = 'default',
+    children,
+    ...restProps
+  }: Props = $props();
 </script>
 
 <ButtonPrimitive.Root
-  {builders}
-  class={computedClass}
+  class={cn(buttonVariants({ variant, size, className: className as any })) as any}
   type="button"
-  {...$$restProps}
-  on:click
-  on:keydown
+  {...restProps as any}
 >
-  <slot />
+  {@render children?.()}
 </ButtonPrimitive.Root>
+

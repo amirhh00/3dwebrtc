@@ -16,7 +16,8 @@ interface CommunicationEventBasse {
     | 'chatMessage'
     | 'positionUpdate'
     | 'micToggle'
-    | 'roomStateSync';
+    | 'roomStateSync'
+    | 'gameEvent';
 }
 
 export interface positionUpdate extends CommunicationEventBasse {
@@ -73,10 +74,17 @@ export type MeshSignalInbound = {
 
 export type MeshSignalPayload = MeshSignalOutbound | MeshSignalInbound;
 
+export interface GameEvent extends CommunicationEventBasse {
+  event: 'gameEvent';
+  data: any;
+  time: number;
+}
+
 export type RTCMessage =
   | positionUpdate
   | MicToggle
   | RoomStateSync
   | RoomStateChanged
   | ChatMessage
-  | MeshSignalPayload;
+  | MeshSignalPayload
+  | GameEvent;
