@@ -20,10 +20,21 @@ interface CommunicationEventBasse {
     | 'gameEvent';
 }
 
+export type HandState = {
+  trigger?: number;
+  grip?: number;
+  thumb?: number;
+  position?: [number, number, number];
+  rotation?: [number, number, number, number];
+};
+
 export interface positionUpdate extends CommunicationEventBasse {
   event: 'positionUpdate';
   position: [number, number, number];
   time: number;
+  isVR?: boolean;
+  leftHand?: HandState;
+  rightHand?: HandState;
 }
 
 export interface RoomStateChanged extends CommunicationEventBasse {

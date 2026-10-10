@@ -7,9 +7,11 @@
   aria-live="polite"
   aria-relevant="additions"
 >
-  <div class="flex flex-col justify-end gap-0.5 overflow-y-auto pr-1 [mask-image:linear-gradient(to_bottom,transparent,black_12%)]">
+  <div
+    class="flex flex-col justify-end gap-0.5 overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent,black_12%)] pr-1"
+  >
     {#each gameEventLog.lines as line (line.id)}
-      <p class="m-0 break-words text-foreground/90 drop-shadow-sm">
+      <p class="text-foreground/90 m-0 break-words drop-shadow-sm">
         {#each line.segments as seg}
           {#if seg.playerName}
             <strong class="font-bold" style:color={seg.color}>{seg.text}</strong>

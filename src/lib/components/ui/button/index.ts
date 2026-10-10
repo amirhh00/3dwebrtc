@@ -43,4 +43,3 @@ export {
   type Props as ButtonProps,
   buttonVariants
 };
-

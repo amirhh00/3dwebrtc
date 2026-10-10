@@ -8,7 +8,6 @@
 <Sonner
   theme={mode.current}
   class="toaster group"
-
   toastOptions={{
     classes: {
       toast:

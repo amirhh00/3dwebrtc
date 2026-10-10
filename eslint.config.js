@@ -18,11 +18,19 @@ export default tseslint.config(
       }
     },
     rules: {
-      'no-debugger': 'off'
+      'no-debugger': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }
+      ],
+      'svelte/require-each-key': 'off',
+      'svelte/no-navigation-without-resolve': 'off',
+      'svelte/no-useless-mustaches': 'off'
     }
   },
   {
-    files: ['**/*.svelte'],
+    files: ['**/*.svelte', '**/*.svelte.ts'],
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser

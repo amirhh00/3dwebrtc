@@ -2,7 +2,7 @@ import type { RoomState, UserServer } from '$lib/@types/user.type';
 import { availableRooms, audioUi, gameState } from '$lib/store/game.svelte';
 import { HostConnection } from './HostWebRTC.connection';
 import { PlayerConnection } from './PlayerWebRTC.connection';
-import { PUBLIC_BASE_URL } from '$env/static/public';
+import { getApiUrl, getWsUrl } from './endpoint';
 import { dev } from '$app/environment';
 import { WebRTCConnection } from './WebRTC.connection';
 import { toast } from 'svelte-sonner';
@@ -16,9 +16,8 @@ class GameConnectionHandler {
 
   async createRoom() {
     return new Promise<void>((resolve) => {
-      const url = new URL(`${PUBLIC_BASE_URL}/api/game/host`);
-      url.protocol = dev ? 'ws:' : 'wss:';
-      this.conn = new WebSocket(url.toString());
+      const wsUrl = getWsUrl('/api/game/host');
+      this.conn = new WebSocket(wsUrl);
       this.conn.onopen = () => {
         this.conn?.send(JSON.stringify({ type: 'roomState' }));
       };
@@ -48,7 +47,7 @@ class GameConnectionHandler {
   }
 
   async seekRooms() {
-    const response = await fetch(`${PUBLIC_BASE_URL}/api/game/rooms`, {
+    const response = await fetch(getApiUrl('/api/game/rooms'), {
       method: 'GET',
       credentials: 'include'
     });
@@ -106,6 +105,19 @@ class GameConnectionHandler {
 
   disconnect() {
     this.conn?.close();
+    this.conn = null;
+    this.webrtc = null;
+    this.isHost = false;
+  }
+
+  leaveRoom() {
+    this.disconnect();
+    gameState.room = {
+      roomId: '',
+      players: [],
+      messages: []
+    } as any;
+    toast.info('Left multiplayer room');
   }
 }
 

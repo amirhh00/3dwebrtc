@@ -1,4 +1,4 @@
-import { PUBLIC_BASE_URL } from '$env/static/public';
+import { getApiUrl } from './endpoint';
 import { type UserClient } from '$lib/store/game.svelte';
 
 export abstract class WebRTCConnection {
@@ -8,6 +8,7 @@ export abstract class WebRTCConnection {
   protected roomId: string;
   public hasDataChannel = false;
   public mediaStreams = new Map<string, MediaStream>();
+  public onGameEvent?: (event: any) => void;
 
   constructor(role: 'host' | 'player', userId: string, roomId: string) {
     this.role = role;
@@ -24,7 +25,12 @@ export abstract class WebRTCConnection {
    * @param y The y coordinate of the user
    * @param z The z coordinate of the user
    */
-  public abstract sendPositionUpdate(x: number, y: number, z: number): void;
+  public abstract sendPositionUpdate(
+    x: number,
+    y: number,
+    z: number,
+    extra?: { isVR?: boolean; leftHand?: any; rightHand?: any }
+  ): void;
 
   /**
    * Send a game event to the other peer(s)
@@ -59,7 +65,7 @@ export abstract class WebRTCConnection {
    * Update the user info in the database if the user has not connected to a room yet
    */
   public static async sendUserInfoChange(name: string, color: string, userId: string) {
-    const updatedUserRes = await fetch(`${PUBLIC_BASE_URL}/api/user`, {
+    const updatedUserRes = await fetch(getApiUrl('/api/user'), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, color, userId }),

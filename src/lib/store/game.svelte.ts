@@ -1,4 +1,5 @@
 import type { Message, SeekRoom, UserServer } from '$lib/@types/user.type';
+import type { HandState } from '$lib/@types/Rtc.type';
 import { writable } from 'svelte/store';
 
 export const micState = writable(false);
@@ -14,6 +15,9 @@ export type UserClient = UserServer & {
   mic?: boolean;
   stream?: MediaStream;
   health?: number;
+  isVR?: boolean;
+  leftHand?: HandState;
+  rightHand?: HandState;
 };
 export interface Room extends SeekRoom {
   players?: UserClient[];
@@ -36,3 +40,5 @@ export const gameState = $state({
 export const audioUi = $state({
   localMicStream: null as MediaStream | null
 });
+
+

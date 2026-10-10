@@ -1,17 +1,25 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-// import mkcert from 'vite-plugin-mkcert';
+import tailwindcss from '@tailwindcss/vite';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { defineConfig, type PluginOption, type ServerOptions } from 'vite';
-// import { initializeSocket } from './vite-ws-dev.ts';
 
-export default defineConfig((cfg) => {
-  let server: ServerOptions | undefined = undefined;
-  const plugins: PluginOption[] = [sveltekit()];
-  if (cfg.mode === 'development') {
-    // plugins.push(mkcert());
-    server = {
-      // proxy: {}
-    };
+export default defineConfig(() => {
+  const plugins: PluginOption[] = [tailwindcss(), sveltekit()];
+  if (process.env.HTTPS === 'true') {
+    plugins.push(basicSsl());
   }
+
+  const server: ServerOptions = {
+    host: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+        ws: true
+      }
+    }
+  };
+
   return {
     server,
     plugins

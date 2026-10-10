@@ -1,4 +1,4 @@
-import { PUBLIC_BASE_URL } from '$env/static/public';
+import { getApiUrl } from './endpoint';
 import type { RoomState } from '$lib/@types/user.type';
 import type {
   ChatMessage,
@@ -6,6 +6,7 @@ import type {
   MeshSignalInbound,
   MeshSignalOutbound,
   MicToggle,
+  positionUpdate,
   RoomStateChanged,
   RoomStateSync,
   RTCMessage
@@ -361,14 +362,19 @@ export class PlayerConnection extends WebRTCConnection {
           });
           break;
         }
-        case 'positionUpdate':
+        case 'positionUpdate': {
+          const posMsg = message as positionUpdate;
           gameState.room.players = gameState.room.players?.map((player) => {
-            if (player.id === message.from) {
-              player.position = message.position;
+            if (player.id === posMsg.from) {
+              player.position = posMsg.position;
+              player.isVR = posMsg.isVR;
+              player.leftHand = posMsg.leftHand;
+              player.rightHand = posMsg.rightHand;
             }
             return player;
           });
           break;
+        }
         case 'userLeft':
           logPlayerLeft(message.user);
           gameState.room.players = gameState.room.players?.filter(
@@ -417,6 +423,7 @@ export class PlayerConnection extends WebRTCConnection {
               targetPlayer.health = Math.max(0, (targetPlayer.health || 100) - damage);
             }
           }
+          this.onGameEvent?.(ge.data);
           break;
         }
       }
@@ -430,7 +437,7 @@ export class PlayerConnection extends WebRTCConnection {
     // Send as double-stringified JSON (matching original behavior)
     const sdpString = JSON.stringify(offerSdp);
 
-    const response = await fetch(`${PUBLIC_BASE_URL}/api/game/rooms`, {
+    const response = await fetch(getApiUrl('/api/game/rooms'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -470,13 +477,19 @@ export class PlayerConnection extends WebRTCConnection {
     );
   }
 
-  public sendPositionUpdate(x: number, y: number, z: number): void {
+  public sendPositionUpdate(
+    x: number,
+    y: number,
+    z: number,
+    extra?: { isVR?: boolean; leftHand?: any; rightHand?: any }
+  ): void {
     this.peerConnection.channel?.send(
       JSON.stringify({
         event: 'positionUpdate',
         position: [x, y, z],
         from: gameState.userId,
-        time: new Date().getTime()
+        time: new Date().getTime(),
+        ...extra
       } satisfies RTCMessage)
     );
   }

@@ -1,4 +1,5 @@
 import type { UserClient } from '$lib/store/game.svelte';
+import { SvelteDate } from 'svelte/reactivity';
 
 export type LogSegment = {
   text: string;
@@ -20,7 +21,7 @@ export const gameEventLog = $state({
 });
 
 export function formatLogTime(t: number): string {
-  return new Date(t).toLocaleTimeString(undefined, {
+  return new SvelteDate(t).toLocaleTimeString(undefined, {
     hour12: false,
     hour: '2-digit',
     minute: '2-digit',

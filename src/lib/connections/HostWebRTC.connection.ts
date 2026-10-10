@@ -17,7 +17,7 @@ import {
   logRename
 } from '$lib/store/gameEventLog.svelte';
 import { WebRTCConnection } from './WebRTC.connection';
-import { PUBLIC_BASE_URL } from '$env/static/public';
+import { getApiUrl } from './endpoint';
 import { DEFAULT_RTC_CONFIGURATION, waitForIceGatheringComplete } from './webrtc-ice';
 
 export class HostConnection extends WebRTCConnection {
@@ -88,7 +88,7 @@ export class HostConnection extends WebRTCConnection {
     // Store the peer connection BEFORE sending answer
     this.players.set(playerId, newPeerConnection);
 
-    await fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
+    await fetch(getApiUrl('/api/game/host'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -142,7 +142,7 @@ export class HostConnection extends WebRTCConnection {
     dataChannel.onopen = async () => {
       this.hasDataChannel = true;
 
-      const newAddedUserToDbRes = await fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
+      const newAddedUserToDbRes = await fetch(getApiUrl('/api/game/host'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -215,15 +215,20 @@ export class HostConnection extends WebRTCConnection {
           }
           this.broadcastToPlayers(parsedRtcMessage, { excludePlayerId: playerId });
           break;
-        case 'positionUpdate':
+        case 'positionUpdate': {
+          const posMsg = parsedRtcMessage as positionUpdate;
           for (const player of gameState.room.players || []) {
             if (player.id === playerId) {
-              player.position = (parsedRtcMessage as positionUpdate).position;
+              player.position = posMsg.position;
+              player.isVR = posMsg.isVR;
+              player.leftHand = posMsg.leftHand;
+              player.rightHand = posMsg.rightHand;
               break;
             }
           }
           this.broadcastToPlayers(parsedRtcMessage, { excludePlayerId: playerId });
           break;
+        }
         case 'chatMessage': {
           const chat = parsedRtcMessage as ChatMessage;
           if (chat.from === playerId) {
@@ -274,8 +279,9 @@ export class HostConnection extends WebRTCConnection {
               targetPlayer.health = Math.max(0, (targetPlayer.health || 100) - damage);
             }
           }
+          this.onGameEvent?.(msg.data);
           // Broadcast game event to all players
-          this.broadcastToPlayers(msg);
+          this.broadcastToPlayers(msg, { excludePlayerId: playerId });
           break;
         }
       }
@@ -322,7 +328,7 @@ export class HostConnection extends WebRTCConnection {
   }
 
   private async handleRemovePlayer(playerId: string) {
-    const disconnectedUserRes = await fetch(`${PUBLIC_BASE_URL}/api/game/host`, {
+    const disconnectedUserRes = await fetch(getApiUrl('/api/game/host'), {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -363,12 +369,18 @@ export class HostConnection extends WebRTCConnection {
     this.broadcastToPlayers(chat);
   }
 
-  public sendPositionUpdate(x: number, y: number, z: number): void {
+  public sendPositionUpdate(
+    x: number,
+    y: number,
+    z: number,
+    extra?: { isVR?: boolean; leftHand?: any; rightHand?: any }
+  ): void {
     this.broadcastToPlayers({
       event: 'positionUpdate',
       from: gameState.userId,
       position: [x, y, z],
-      time: new Date().getTime()
+      time: new Date().getTime(),
+      ...extra
     });
   }
 

@@ -17,9 +17,9 @@
       class={`w-full justify-center md:flex md:w-auto md:items-center ${isOpen ? 'block' : 'hidden'}`}
     >
       <div class="text-sm md:flex-grow">
-        <a href="/" class="mr-4 mt-4 block md:mt-0 md:inline-block"> Home </a>
-        <a href="/about" class="mr-4 mt-4 block md:mt-0 md:inline-block">About</a>
-        <a href="/services" class="mr-4 mt-4 block md:mt-0 md:inline-block">Services</a>
+        <a href="/" class="mt-4 mr-4 block md:mt-0 md:inline-block"> Home </a>
+        <a href="/about" class="mt-4 mr-4 block md:mt-0 md:inline-block">About</a>
+        <a href="/services" class="mt-4 mr-4 block md:mt-0 md:inline-block">Services</a>
         <a href="/contact" class="mt-4 block md:mt-0 md:inline-block"> Contact </a>
       </div>
     </div>

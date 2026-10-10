@@ -3,6 +3,7 @@
   import { Camera, Vector2, Vector3, Quaternion, Euler, type QuaternionLike } from 'three';
   import { useThrelte, useParent, useTask } from '@threlte/core';
   import type { Object3D } from 'three';
+  import { useXR } from '@threlte/xr';
 
   type TPCProps = {
     object: Object3D;
@@ -17,6 +18,8 @@
     idealOffset = { x: 0, y: 2, z: -3 },
     idealLookAt = { x: 0, y: 1, z: 5 }
   }: TPCProps = $props();
+
+  const { isPresenting } = useXR();
 
   const currentPosition = new Vector3();
   const currentLookAt = new Vector3();
@@ -42,11 +45,12 @@
   }
 
   domElement.addEventListener('click', () => {
+    if (isPresenting.current) return;
     domElement.requestPointerLock({
       unadjustedMovement: true
     });
   });
-  
+
   domElement.addEventListener('mousemove', onMouseMove);
   domElement.ownerDocument.addEventListener('pointerlockchange', onPointerlockChange);
 
@@ -56,18 +60,18 @@
   });
 
   function onMouseMove(event: MouseEvent) {
-    if (!isPointerLocked || !object) return;
+    if (isPresenting.current || !isPointerLocked || !object) return;
 
     const { movementX, movementY } = event;
-    
+
     // Rotate character with mouse movement
     euler.setFromQuaternion(object.quaternion);
     euler.y -= movementX * 0.002 * rotateSpeed;
     euler.x += movementY * 0.002 * rotateSpeed;
-    
+
     // Clamp pitch
     euler.x = Math.max(_PI_2 - Math.PI, Math.min(_PI_2, euler.x));
-    
+
     object.quaternion.setFromEuler(euler);
 
     invalidate();
@@ -79,6 +83,9 @@
 
   // This is basically your update function
   useTask((delta) => {
+    // Skip third person camera tracking in VR
+    if (isPresenting.current) return;
+
     // the object's position is bound to the prop
     if (!object) return;
 
